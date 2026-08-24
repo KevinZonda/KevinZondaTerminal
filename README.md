@@ -70,7 +70,12 @@ Argon2id 密码哈希（登录用户名固定为 `kterm`）：
 
 ```powershell
 make auth-init
+# 或使用已安装的 Server
+kterm-server auth init
 ```
+
+后续可用 `kterm-server auth add` 增加轮换密码，用 `kterm-server auth verify` 验证密码；三者都支持
+`--file <path>`。
 
 配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示原生 Basic Auth 登录框；验证成功后
 Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该 Cookie 鉴权。`/healthz` 保持公开。

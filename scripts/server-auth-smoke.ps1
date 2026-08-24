@@ -8,9 +8,9 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $serverProject = Join-Path $repositoryRoot 'src\KevinZonda.Terminal.Server\KevinZonda.Terminal.Server.csproj'
 $serverExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server\bin\$Configuration\net10.0-windows\kterm-server.exe"
-$authExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server.UserAuth\bin\$Configuration\net10.0-windows\kterm-server-auth.exe"
 $testScript = Join-Path $repositoryRoot 'scripts\test-kterm-server-auth.mjs'
 $testPassword = 'kterm-server-auth-smoke-password'
+$additionalPassword = 'kterm-server-auth-smoke-password-rotated'
 $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $temporaryDirectory = [IO.Path]::GetFullPath((Join-Path $temporaryRoot "kterm-server-auth-$([Guid]::NewGuid().ToString('N'))"))
 if (-not $temporaryDirectory.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
@@ -26,9 +26,19 @@ if ($LASTEXITCODE -ne 0) {
 New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
 $server = $null
 try {
-    @($testPassword, $testPassword) | & $authExecutable init --file $authFile
+    @($testPassword, $testPassword) | & $serverExecutable auth init --file $authFile
     if ($LASTEXITCODE -ne 0) {
-        throw "kterm-server-auth init failed with exit code $LASTEXITCODE."
+        throw "kterm-server auth init failed with exit code $LASTEXITCODE."
+    }
+
+    @($testPassword) | & $serverExecutable auth verify --file $authFile
+    if ($LASTEXITCODE -ne 0) {
+        throw "kterm-server auth verify failed with exit code $LASTEXITCODE."
+    }
+
+    @($additionalPassword, $additionalPassword) | & $serverExecutable auth add --file $authFile
+    if ($LASTEXITCODE -ne 0) {
+        throw "kterm-server auth add failed with exit code $LASTEXITCODE."
     }
 
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)

@@ -1,18 +1,22 @@
-# KTerm Server UserAuth
+# KTerm Server UserAuth Library
 
-Creates and verifies the local Argon2id password hashes used by KTerm Server authentication.
+Provides the configuration store and Argon2id password operations used by KTerm Server authentication.
 The default configuration path is `%USERPROFILE%\.kterm\server_auth.json`.
+
+The command-line interface is hosted by `kterm-server`:
 
 ```powershell
 # Create a new file. Refuses to overwrite an existing file.
-dotnet run --project src\KevinZonda.Terminal.Server.UserAuth -- init
+kterm-server auth init
 
 # Add another allowed password for credential rotation.
-dotnet run --project src\KevinZonda.Terminal.Server.UserAuth -- add
+kterm-server auth add
 
 # Verify a password against the file.
-dotnet run --project src\KevinZonda.Terminal.Server.UserAuth -- verify
+kterm-server auth verify
 ```
+
+From the source tree, use `dotnet run --project src\KevinZonda.Terminal.Server -- auth <command>`.
 
 Use `--file <path>` to override the default path. Passwords are read interactively and are never accepted
 as command-line arguments. The generated file has this shape:

@@ -6,6 +6,12 @@ using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Web;
 using Microsoft.AspNetCore.Authentication;
 
+if (args.Length > 0 && string.Equals(args[0], "auth", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await ServerAuthCommand.RunAsync(args[1..]);
+    return;
+}
+
 if (ConsoleThemeHelper.TryRun(args, out var helperExitCode))
 {
     Environment.ExitCode = helperExitCode;

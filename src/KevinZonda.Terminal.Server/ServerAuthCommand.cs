@@ -1,8 +1,8 @@
 using KevinZonda.Terminal.Server.UserAuth;
 
-return await UserAuthCommand.RunAsync(args);
+namespace KevinZonda.Terminal.Server;
 
-internal static class UserAuthCommand
+internal static class ServerAuthCommand
 {
     internal static async Task<int> RunAsync(string[] args)
     {
@@ -195,7 +195,7 @@ internal static class UserAuthCommand
     private static void WriteUsage(TextWriter? writer = null)
     {
         writer ??= Console.Out;
-        writer.WriteLine("Usage: kterm-server-auth <init|add|verify> [--file <path>]");
+        writer.WriteLine("Usage: kterm-server auth <init|add|verify> [--file <path>]");
         writer.WriteLine();
         writer.WriteLine($"Default file: {ServerAuthStore.DefaultConfigurationPath}");
     }
