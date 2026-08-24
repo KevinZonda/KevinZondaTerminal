@@ -1,3 +1,4 @@
+import { createId } from './id';
 import { DEFAULT_THEME_NAME, normalizeTerminalThemeName } from './themes';
 
 export interface SessionCreated {
@@ -488,7 +489,7 @@ export class NativeBridge {
   }
 
   private request(type: string, payload: Record<string, unknown>): Promise<BridgeEvent> {
-    const requestId = crypto.randomUUID();
+    const requestId = createId();
     return new Promise<BridgeEvent>((resolve, reject) => {
       this.pending.set(requestId, { resolve, reject });
       this.send(type, payload, undefined, requestId);

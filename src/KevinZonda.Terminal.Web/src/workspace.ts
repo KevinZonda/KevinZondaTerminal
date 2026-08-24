@@ -10,6 +10,7 @@ import type {
 } from './bridge';
 import { TerminalController } from './terminal-controller';
 import type { TerminalCallbacks } from './terminal-controller';
+import { createId } from './id';
 import { applyTerminalThemeToDocument } from './themes';
 
 type SplitDirection = 'columns' | 'rows';
@@ -189,7 +190,7 @@ export class Workspace implements TerminalCallbacks {
       this.addTerminal(session);
 
       const newPane: PaneState = {
-        id: crypto.randomUUID(),
+        id: createId(),
         tabs: [this.createTerminalTab(session)],
         activeSessionId: session.sessionId
       };
@@ -360,12 +361,12 @@ export class Workspace implements TerminalCallbacks {
     this.addTerminal(session);
 
     const pane: PaneState = {
-      id: crypto.randomUUID(),
+      id: createId(),
       tabs: [this.createTerminalTab(session)],
       activeSessionId: session.sessionId
     };
     const workspace: WorkspaceState = {
-      id: crypto.randomUUID(),
+      id: createId(),
       name: `Workspace ${this.nextWorkspaceNumber++}`,
       panes: new Map([[pane.id, pane]]),
       root: { type: 'pane', paneId: pane.id },
@@ -756,7 +757,7 @@ export class Workspace implements TerminalCallbacks {
         : undefined;
     if (!pane) {
       pane = {
-        id: crypto.randomUUID(),
+        id: createId(),
         tabs: [],
         activeSessionId: session.sessionId
       };
