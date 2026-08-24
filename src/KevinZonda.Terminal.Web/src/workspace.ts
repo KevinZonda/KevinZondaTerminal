@@ -9,7 +9,7 @@ import type {
   SystemMetricsStatus
 } from './bridge';
 import { TerminalController } from './terminal-controller';
-import type { TerminalCallbacks } from './terminal-controller';
+import type { MobileToolbarKey, TerminalCallbacks } from './terminal-controller';
 import { createId } from './id';
 import { applyTerminalThemeToDocument } from './themes';
 
@@ -75,6 +75,7 @@ export class Workspace implements TerminalCallbacks {
   private static readonly SIDEBAR_SWIPE_CLAIM_DISTANCE = 12;
   private static readonly SIDEBAR_SWIPE_TRIGGER_DISTANCE = 60;
   private static readonly SIDEBAR_SWIPE_AXIS_RATIO = 1.2;
+  private static readonly MOBILE_KEYBOARD_THRESHOLD = 100;
   private static readonly TAB_DRAG_THRESHOLD = 6;
   private static readonly MAX_WORKSPACE_NAME_LENGTH = 64;
   private static readonly PEEK_OPEN_DELAY = 100;
@@ -94,6 +95,11 @@ export class Workspace implements TerminalCallbacks {
   private readonly sidebar: HTMLElement;
   private readonly workspaceList: HTMLElement;
   private readonly status: HTMLElement;
+  private readonly mobileInputToolbar: HTMLElement;
+  private readonly mobileControlButton: HTMLButtonElement;
+  private readonly coarsePointer = window.matchMedia('(pointer: coarse)');
+  private mobileViewportBaselineHeight = window.visualViewport?.height ?? window.innerHeight;
+  private mobileViewportBaselineWidth = window.visualViewport?.width ?? window.innerWidth;
   private readonly terminals = new Map<string, TerminalController>();
   private readonly earlyOutput = new Map<string, string[]>();
   private readonly closedSessionIds = new Set<string>();
@@ -141,6 +147,12 @@ export class Workspace implements TerminalCallbacks {
     this.sidebar = this.requireElement('workspace-sidebar');
     this.workspaceList = this.requireElement('workspace-list');
     this.status = this.requireElement('status');
+    this.mobileInputToolbar = this.requireElement('mobile-input-toolbar');
+    const mobileControlButton = this.requireElement('mobile-input-control');
+    if (!(mobileControlButton instanceof HTMLButtonElement)) {
+      throw new Error("Application element '#mobile-input-control' must be a button.");
+    }
+    this.mobileControlButton = mobileControlButton;
     this.requireElement('new-workspace').addEventListener('click', () => void this.createWorkspace());
     this.peekRail.addEventListener('pointerenter', () => this.cancelPeekClose());
     this.peekRail.addEventListener('pointerleave', () => this.schedulePeekClose());
@@ -148,6 +160,7 @@ export class Workspace implements TerminalCallbacks {
     this.sidebar.addEventListener('click', this.handleSidebarBackgroundClick);
     this.agentUsageTooltip.addEventListener('pointerenter', () => this.cancelUsageTooltipClose());
     this.agentUsageTooltip.addEventListener('pointerleave', () => this.scheduleUsageTooltipClose());
+    this.mobileInputToolbar.addEventListener('pointerdown', this.handleMobileToolbarPointerDown);
 
     this.bridge.on('session.output', event => this.handleOutput(event));
     this.bridge.on('session.exited', event => this.handleExit(event));
@@ -174,7 +187,15 @@ export class Workspace implements TerminalCallbacks {
     this.app.addEventListener('-xterm-gesturecontextmenu', this.handleSuppressedXtermTouchGesture, { capture: true });
     document.documentElement.addEventListener('pointerleave', this.handleViewportPointerLeave);
     window.addEventListener('blur', this.handleWindowBlur);
-    window.addEventListener('resize', () => this.hideAgentUsageTooltip());
+    window.addEventListener('focus', this.updateMobileInputToolbar);
+    window.addEventListener('resize', () => {
+      this.hideAgentUsageTooltip();
+      this.updateMobileInputToolbar();
+    });
+    window.visualViewport?.addEventListener('resize', this.updateMobileInputToolbar);
+    window.visualViewport?.addEventListener('scroll', this.updateMobileInputToolbar);
+    this.coarsePointer.addEventListener('change', this.updateMobileInputToolbar);
+    this.updateMobileInputToolbar();
   }
 
   public async initialize(): Promise<void> {
@@ -243,6 +264,12 @@ export class Workspace implements TerminalCallbacks {
     pane.activeSessionId = sessionId;
     workspace.focusedPaneId = pane.id;
     this.updateFocusState();
+  }
+
+  public onControlModifierChanged(sessionId: string, _active: boolean): void {
+    if (sessionId === this.focusedPane?.activeSessionId) {
+      this.updateMobileInputToolbar();
+    }
   }
 
   public onFontSizeChanged(sessionId: string, fontSize: number): void {
@@ -717,7 +744,8 @@ export class Workspace implements TerminalCallbacks {
     }
 
     const touch = event.changedTouches.item(0);
-    if (!touch) {
+    const target = event.target;
+    if (!touch || (target instanceof Node && this.mobileInputToolbar.contains(target))) {
       return;
     }
 
@@ -852,6 +880,7 @@ export class Workspace implements TerminalCallbacks {
     this.lastPointerClientX = Number.POSITIVE_INFINITY;
     this.cancelPeekOpen();
     this.hideAgentUsageTooltip();
+    this.mobileInputToolbar.hidden = true;
     if (this.sidebarMode === 'peek') {
       this.setSidebarMode('hidden');
     }
@@ -1540,7 +1569,87 @@ export class Workspace implements TerminalCallbacks {
       terminal.setFocused(sessionId === focusedSessionId);
     });
 
+    this.updateMobileInputToolbar();
     this.syncWindowTitle();
+  }
+
+  private readonly handleMobileToolbarPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>(
+      '.mobile-input-key'
+    );
+    const terminal = this.focusedTerminal;
+    if (!button || !this.mobileInputToolbar.contains(button) || !terminal) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const key = button.dataset.key;
+    if (key === 'control') {
+      terminal.toggleControlModifier();
+      return;
+    }
+    if (this.isMobileToolbarKey(key)) {
+      terminal.sendMobileToolbarKey(key);
+    }
+  };
+
+  private readonly updateMobileInputToolbar = (): void => {
+    const terminal = this.focusedTerminal;
+    const viewport = window.visualViewport;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const viewportWidth = viewport?.width ?? window.innerWidth;
+    if (Math.abs(viewportWidth - this.mobileViewportBaselineWidth) > 40) {
+      // A substantial width change is normally an orientation change, not the
+      // software keyboard. Establish a fresh unoccluded height baseline.
+      this.mobileViewportBaselineWidth = viewportWidth;
+      this.mobileViewportBaselineHeight = viewportHeight;
+    } else {
+      this.mobileViewportBaselineHeight = Math.max(
+        this.mobileViewportBaselineHeight,
+        viewportHeight
+      );
+    }
+
+    const keyboardVisible = !viewport ||
+      this.mobileViewportBaselineHeight - viewportHeight >= Workspace.MOBILE_KEYBOARD_THRESHOLD;
+    const visible = Boolean(terminal) && keyboardVisible &&
+      (navigator.maxTouchPoints > 0 || this.coarsePointer.matches);
+    this.mobileInputToolbar.hidden = !visible;
+    if (!visible || !terminal) {
+      this.mobileControlButton.classList.remove('active');
+      this.mobileControlButton.setAttribute('aria-pressed', 'false');
+      return;
+    }
+
+    const controlActive = terminal.isControlModifierActive;
+    this.mobileControlButton.classList.toggle('active', controlActive);
+    this.mobileControlButton.setAttribute('aria-pressed', String(controlActive));
+
+    const viewportBottom = viewport
+      ? viewport.offsetTop + viewport.height
+      : window.innerHeight;
+    const keyboardInset = Math.max(0, window.innerHeight - viewportBottom);
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportRight = viewport
+      ? Math.max(0, window.innerWidth - viewport.offsetLeft - viewport.width)
+      : 0;
+    this.mobileInputToolbar.style.bottom = `${Math.max(31, keyboardInset + 6)}px`;
+    this.mobileInputToolbar.style.left = `${viewportLeft + 6}px`;
+    this.mobileInputToolbar.style.right = `${viewportRight + 6}px`;
+  };
+
+  private isMobileToolbarKey(value: string | undefined): value is MobileToolbarKey {
+    return value === 'escape' ||
+      value === 'tab' ||
+      value === 'arrowLeft' ||
+      value === 'arrowUp' ||
+      value === 'arrowDown' ||
+      value === 'arrowRight';
   }
 
   private syncWindowTitle(): void {

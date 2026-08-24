@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <meta name="color-scheme" content="dark" />
     <title>KevinZonda Terminal</title>
   </head>
@@ -24,6 +24,22 @@
         <nav id="workspace-indicator" aria-label="Workspaces"></nav>
         <div id="agent-status-bar" aria-label="Agent usage status"></div>
       </footer>
+      <nav id="mobile-input-toolbar" aria-label="Terminal modifier and navigation keys" hidden>
+        <button id="mobile-input-control" class="mobile-input-key" type="button"
+          data-key="control" aria-label="Control modifier" aria-pressed="false" tabindex="-1">Ctrl</button>
+        <button class="mobile-input-key" type="button" data-key="escape"
+          aria-label="Escape" tabindex="-1">Esc</button>
+        <button class="mobile-input-key" type="button" data-key="tab"
+          aria-label="Tab" tabindex="-1">Tab</button>
+        <button class="mobile-input-key mobile-input-arrow" type="button" data-key="arrowLeft"
+          aria-label="Left arrow" tabindex="-1">←</button>
+        <button class="mobile-input-key mobile-input-arrow" type="button" data-key="arrowUp"
+          aria-label="Up arrow" tabindex="-1">↑</button>
+        <button class="mobile-input-key mobile-input-arrow" type="button" data-key="arrowDown"
+          aria-label="Down arrow" tabindex="-1">↓</button>
+        <button class="mobile-input-key mobile-input-arrow" type="button" data-key="arrowRight"
+          aria-label="Right arrow" tabindex="-1">→</button>
+      </nav>
       <div id="status" role="status" aria-live="polite"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

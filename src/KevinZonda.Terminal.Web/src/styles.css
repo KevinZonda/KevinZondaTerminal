@@ -315,6 +315,72 @@ button {
   white-space: nowrap;
 }
 
+#mobile-input-toolbar {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  height: 42px;
+  min-width: 0;
+  padding: 4px;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  color: var(--chrome-text, #d8dee9);
+  background: var(--chrome-bg-translucent, #171b22ed);
+  border: 1px solid var(--chrome-border, #303845);
+  border-radius: 7px;
+  box-shadow: 0 5px 18px #0008;
+  backdrop-filter: blur(6px);
+  scrollbar-width: none;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+#mobile-input-toolbar[hidden],
+#mobile-input-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-input-key {
+  min-width: 42px;
+  height: 32px;
+  flex: 1 0 42px;
+  padding: 0 9px;
+  color: var(--chrome-text-bright, #eef2f6);
+  background: var(--chrome-raised, #202630);
+  border: 1px solid var(--chrome-border, #303845);
+  border-radius: 5px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.mobile-input-key.active,
+.mobile-input-key[aria-pressed="true"] {
+  color: var(--terminal-background, #0c0f14);
+  background: var(--chrome-accent, #88c0d0);
+  border-color: var(--chrome-text-bright, #eef2f6);
+}
+
+.mobile-input-key:active {
+  background: var(--chrome-active, #29313d);
+}
+
+.mobile-input-key.active:active,
+.mobile-input-key[aria-pressed="true"]:active {
+  background: var(--chrome-accent, #88c0d0);
+}
+
+.mobile-input-arrow {
+  min-width: 38px;
+  flex-basis: 38px;
+  padding: 0 7px;
+  font-size: 17px;
+}
+
 #system-status,
 #agent-status-bar {
   display: flex;

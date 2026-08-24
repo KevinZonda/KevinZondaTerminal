@@ -8,10 +8,19 @@ import type { CursorSettings, FontSettings, NativeBridge, SessionCreated, ThemeS
 import { resolveTerminalTheme } from './themes';
 
 export interface TerminalCallbacks {
+  onControlModifierChanged(sessionId: string, active: boolean): void;
   onFocus(sessionId: string): void;
   onFontSizeChanged(sessionId: string, fontSize: number): void;
   onTitle(sessionId: string, title: string): void;
 }
+
+export type MobileToolbarKey =
+  | 'escape'
+  | 'tab'
+  | 'arrowLeft'
+  | 'arrowUp'
+  | 'arrowDown'
+  | 'arrowRight';
 
 interface WebglAddonInternals {
   _renderer?: {
@@ -56,6 +65,7 @@ export class TerminalController {
   private lastRows = 0;
   private altScrollRemainder = 0;
   private altScrollWasAltBuffer = false;
+  private controlModifierActive = false;
   private readonly pinchTouches = new Map<number, { x: number; y: number }>();
   private pinchStartDistance?: number;
   private pinchStartFontSize = 0;
@@ -107,7 +117,7 @@ export class TerminalController {
     this.terminal.loadAddon(new WebLinksAddon((_event, uri) => this.bridge.openExternal(uri)));
 
     this.disposables.push(
-      this.terminal.onData(data => this.bridge.sendInput(this.sessionId, data)),
+      this.terminal.onData(data => this.handleTerminalData(data)),
       this.terminal.onBinary(data => this.bridge.sendBinaryInput(this.sessionId, data)),
       this.terminal.onTitleChange(title => this.callbacks.onTitle(this.sessionId, title)),
       this.terminal.onResize(size => {
@@ -232,6 +242,46 @@ export class TerminalController {
 
   public setFocused(focused: boolean): void {
     this.element.classList.toggle('focused', focused);
+  }
+
+  public get isControlModifierActive(): boolean {
+    return this.controlModifierActive;
+  }
+
+  public toggleControlModifier(): void {
+    this.setControlModifier(!this.controlModifierActive);
+    this.focus();
+  }
+
+  public sendMobileToolbarKey(key: MobileToolbarKey): void {
+    let data: string;
+    switch (key) {
+      case 'escape':
+        data = '\x1b';
+        break;
+      case 'tab':
+        data = '\t';
+        break;
+      default: {
+        const final = key === 'arrowLeft'
+          ? 'D'
+          : key === 'arrowUp'
+            ? 'A'
+            : key === 'arrowDown'
+              ? 'B'
+              : 'C';
+        data = this.controlModifierActive
+          ? `\x1b[1;5${final}`
+          : this.terminal.modes.applicationCursorKeysMode
+            ? `\x1bO${final}`
+            : `\x1b[${final}`;
+        break;
+      }
+    }
+
+    this.setControlModifier(false);
+    this.bridge.sendInput(this.sessionId, data);
+    this.focus();
   }
 
   public get cols(): number {
@@ -466,6 +516,60 @@ export class TerminalController {
       : (applicationMode ? '\x1bOB' : '\x1b[B');
     this.bridge.sendInput(this.sessionId, sequence.repeat(Math.abs(lines)));
   };
+
+  private handleTerminalData(data: string): void {
+    if (!this.controlModifierActive) {
+      this.bridge.sendInput(this.sessionId, data);
+      return;
+    }
+
+    this.setControlModifier(false);
+    this.bridge.sendInput(this.sessionId, this.controlCharacter(data) ?? data);
+  }
+
+  private controlCharacter(data: string): string | undefined {
+    if (Array.from(data).length !== 1) {
+      return undefined;
+    }
+
+    const code = data.charCodeAt(0);
+    if (code >= 65 && code <= 90) {
+      return String.fromCharCode(code - 64);
+    }
+    if (code >= 97 && code <= 122) {
+      return String.fromCharCode(code - 96);
+    }
+
+    const aliases: Record<string, number> = {
+      ' ': 0,
+      '@': 0,
+      '2': 0,
+      '[': 27,
+      '3': 27,
+      '\\': 28,
+      '4': 28,
+      ']': 29,
+      '5': 29,
+      '^': 30,
+      '6': 30,
+      '_': 31,
+      '-': 31,
+      '7': 31,
+      '?': 127,
+      '8': 127
+    };
+    const controlCode = aliases[data];
+    return controlCode === undefined ? undefined : String.fromCharCode(controlCode);
+  }
+
+  private setControlModifier(active: boolean): void {
+    if (active === this.controlModifierActive) {
+      return;
+    }
+
+    this.controlModifierActive = active;
+    this.callbacks.onControlModifierChanged(this.sessionId, active);
+  }
 
   private consumeAltScrollDelta(event: WheelEvent): number {
     let delta: number;
