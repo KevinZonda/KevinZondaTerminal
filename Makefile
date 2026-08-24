@@ -6,6 +6,7 @@ AUTH_TEST_PROJECT := tests/KevinZonda.Terminal.Server.UserAuth.Tests/KevinZonda.
 WEB_DIR := src/KevinZonda.Terminal.Web
 SMOKE_TEST := scripts/smoke.ps1
 SERVER_SMOKE_TEST := scripts/server-smoke.ps1
+SERVER_AUTH_SMOKE_TEST := scripts/server-auth-smoke.ps1
 PUBLISH_DIR := src/KevinZonda.Terminal/bin/Release/net10.0-windows/win-x64/publish
 PUBLISH_EXE := $(PUBLISH_DIR)/KevinZonda.Terminal.exe
 SERVER_PUBLISH_DIR := src/KevinZonda.Terminal.Server/bin/Release/net10.0-windows/win-x64/publish
@@ -24,7 +25,7 @@ CONFIG ?= Debug
 
 .DEFAULT_GOAL := build
 
-.PHONY: help deps install restore web build run run-server auth-init auth-add auth-verify test test-desktop test-server test-auth format audit publish publish-desktop publish-server publish-auth clean
+.PHONY: help deps install restore web build run run-server auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-auth format audit publish publish-desktop publish-server publish-auth clean
 
 help:
 	@echo "Available targets:"
@@ -40,6 +41,7 @@ help:
 	@echo "  make test      - run desktop, server, and user-auth tests"
 	@echo "  make test-desktop - run the desktop 2x2 ConPTY smoke test"
 	@echo "  make test-server - run the HTTP, WebSocket, and Shell server smoke test"
+	@echo "  make test-server-auth - run the server Basic/cookie authentication smoke test"
 	@echo "  make test-auth - run the server user-auth tests"
 	@echo "  make format    - verify C# formatting"
 	@echo "  make audit     - audit NuGet and pnpm dependencies"
@@ -80,13 +82,16 @@ auth-add:
 auth-verify:
 	dotnet run --project $(AUTH_PROJECT) -c $(CONFIG) -- verify $(AUTH_FILE_ARG)
 
-test: test-desktop test-server test-auth
+test: test-desktop test-server test-server-auth test-auth
 
 test-desktop:
 	powershell -NoProfile -ExecutionPolicy Bypass -File $(SMOKE_TEST)
 
 test-server:
 	powershell -NoProfile -ExecutionPolicy Bypass -File $(SERVER_SMOKE_TEST) -Configuration $(CONFIG)
+
+test-server-auth:
+	powershell -NoProfile -ExecutionPolicy Bypass -File $(SERVER_AUTH_SMOKE_TEST) -Configuration $(CONFIG)
 
 test-auth:
 	dotnet run --project $(AUTH_TEST_PROJECT) -c $(CONFIG) --no-launch-profile

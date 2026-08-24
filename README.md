@@ -65,6 +65,24 @@ dotnet run --project src\KevinZonda.Terminal.Server -- `
   --working-directory C:\work
 ```
 
+Server 默认以 `auto` 模式读取 `%USERPROFILE%\.kterm\server_auth.json`。可先创建一个
+Argon2id 密码哈希（登录用户名固定为 `kterm`）：
+
+```powershell
+make auth-init
+```
+
+配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示原生 Basic Auth 登录框；验证成功后
+Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该 Cookie 鉴权。`/healthz` 保持公开。
+配置不存在或 `allowedHash` 为空时，`auto` 模式会输出 `No Pass Hash, fallback to No Pass.` 并按无密码模式运行。
+
+可用 `--auth-file <path>` 指定其他配置文件；`--auth-mode required` 要求配置存在且非空，
+`--auth-mode disabled` 则明确关闭密码验证：
+
+```powershell
+server.cmd --auth-mode required --auth-file C:\path\server_auth.json
+```
+
 每个浏览器页面拥有独立的 Workspace、ConPTY 和 Shell。WebSocket 断开后，页面会按指数退避自动重连，
 并恢复原来的 ConPTY、Shell PID 和未确认输出。刷新当前页面时，还会恢复 Workspace、Pane、Tab、
 活动项以及终端滚屏历史，并继续使用刷新前的 Shell；普通的新页面仍会创建独立 Runtime。
@@ -72,7 +90,6 @@ dotnet run --project src\KevinZonda.Terminal.Server -- `
 接管并恢复同一套 Workspace 和 Shell，原标签页会停止重连。修改 `session` 值也可以直接定位对应 Tab。
 断开的 Runtime 默认保留 30 分钟。可通过
 `--runtime-retention-minutes` 调整保留时间。
-当前 Server 按本地可信网络场景实现，不包含认证或 TLS。
 
 `.csproj` 会执行前端的 `pnpm install --frozen-lockfile`（首次）和 `pnpm run build`，随后把 Vite 产物嵌入应用程序集。
 

@@ -35,6 +35,21 @@ public sealed class ServerAuthStore
 
     public async Task<ServerAuthConfiguration> LoadAsync(CancellationToken cancellationToken = default)
     {
+        var configuration = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+        Validate(configuration, allowEmpty: false);
+        return configuration;
+    }
+
+    public async Task<ServerAuthConfiguration> LoadAllowingEmptyAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+        Validate(configuration, allowEmpty: true);
+        return configuration;
+    }
+
+    private async Task<ServerAuthConfiguration> LoadCoreAsync(CancellationToken cancellationToken)
+    {
         try
         {
             var file = new FileInfo(ConfigurationPath);
@@ -50,10 +65,8 @@ public sealed class ServerAuthStore
 
             var json = await File.ReadAllTextAsync(ConfigurationPath, Encoding.UTF8, cancellationToken)
                 .ConfigureAwait(false);
-            var configuration = JsonSerializer.Deserialize<ServerAuthConfiguration>(json, JsonOptions)
+            return JsonSerializer.Deserialize<ServerAuthConfiguration>(json, JsonOptions)
                 ?? throw new AuthConfigurationException("The server authentication configuration is empty.");
-            Validate(configuration);
-            return configuration;
         }
         catch (AuthConfigurationException)
         {
@@ -86,8 +99,17 @@ public sealed class ServerAuthStore
 
     public void Validate(ServerAuthConfiguration configuration)
     {
+        Validate(configuration, allowEmpty: false);
+    }
+
+    private void Validate(ServerAuthConfiguration configuration, bool allowEmpty)
+    {
         ArgumentNullException.ThrowIfNull(configuration);
-        if (configuration.AllowedHash is null || configuration.AllowedHash.Length == 0)
+        if (configuration.AllowedHash is null)
+        {
+            throw new AuthConfigurationException("The allowedHash array cannot be null.");
+        }
+        if (!allowEmpty && configuration.AllowedHash.Length == 0)
         {
             throw new AuthConfigurationException("At least one allowed hash is required.");
         }

@@ -25,5 +25,7 @@ as command-line arguments. The generated file has this shape:
 }
 ```
 
-This tool only manages password hashes. KTerm Server does not enforce the file until its HTTP/WebSocket
-authentication pipeline is explicitly connected to this project. Authentication over a network must use HTTPS.
+KTerm Server loads this file in its default `auto` authentication mode. When the file exists and contains at
+least one hash, the fixed user name `kterm` can log in through `/auth/login`; successful Basic authentication
+is exchanged for the HttpOnly cookie required by the frontend and `/ws`. A missing or empty file falls back to
+no-password mode in `auto`, while `--auth-mode required` treats either condition as a startup error.

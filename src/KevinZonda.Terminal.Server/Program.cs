@@ -1,8 +1,10 @@
 using System.Net.WebSockets;
+using KevinZonda.Terminal.Server.UserAuth;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Server;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Web;
+using Microsoft.AspNetCore.Authentication;
 
 if (ConsoleThemeHelper.TryRun(args, out var helperExitCode))
 {
@@ -22,6 +24,7 @@ if (string.IsNullOrWhiteSpace(startingDirectory) || !Directory.Exists(startingDi
     startingDirectory = Environment.CurrentDirectory;
 }
 startingDirectory = Path.GetFullPath(startingDirectory);
+var serverAuthentication = await ServerAuthentication.LoadAsync(builder.Configuration);
 
 builder.Services.AddSingleton(new SettingsStore());
 var runtimeRetentionMinutes = builder.Configuration.GetValue<double?>("runtime-retention-minutes") ?? 30;
@@ -30,14 +33,38 @@ builder.Services.AddSingleton(new ServerOptions(startingDirectory, runtimeRetent
 builder.Services.AddSingleton(services => new BrowserTerminalRuntimeRegistry(
     services.GetRequiredService<SettingsStore>(),
     services.GetRequiredService<ServerOptions>()));
+ServerAuthentication.AddServices(builder.Services, serverAuthentication);
 
 var app = builder.Build();
 app.UseWebSockets(new WebSocketOptions
 {
     KeepAliveInterval = TimeSpan.FromSeconds(30)
 });
+if (serverAuthentication.Enabled)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-app.Map("/ws", async context =>
+    app.MapGet("/auth/login", async context =>
+    {
+        await context.SignInAsync(
+            ServerAuthentication.CookieScheme,
+            context.User,
+            new AuthenticationProperties
+            {
+                AllowRefresh = true,
+                IsPersistent = false
+            });
+        context.Response.Redirect(ServerAuthentication.SafeReturnUrl(
+            context.Request.Query["returnUrl"].FirstOrDefault()));
+    }).RequireAuthorization(policy =>
+    {
+        policy.AddAuthenticationSchemes(ServerAuthentication.BasicScheme);
+        policy.RequireAuthenticatedUser();
+    });
+}
+
+var webSocketEndpoint = app.Map("/ws", async context =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -56,10 +83,14 @@ app.Map("/ws", async context =>
         lifetime.ApplicationStopping);
     await runtime.RunAsync(connectionLifetime.Token);
 });
+if (serverAuthentication.Enabled)
+{
+    webSocketEndpoint.RequireAuthorization();
+}
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 
-app.MapGet("/{**path}", async context =>
+var webAssetsEndpoint = app.MapGet("/{**path}", async context =>
 {
     var path = context.Request.RouteValues["path"] as string ?? string.Empty;
     if (!EmbeddedWebAssets.TryOpen(path, out var content, out var contentType) || content is null)
@@ -77,9 +108,23 @@ app.MapGet("/{**path}", async context =>
         await content.CopyToAsync(context.Response.Body, context.RequestAborted);
     }
 });
+if (serverAuthentication.Enabled)
+{
+    webAssetsEndpoint.RequireAuthorization();
+}
 
 app.Logger.LogInformation("Shell sessions will start in {StartingDirectory}", startingDirectory);
 app.Logger.LogInformation("Disconnected browser runtimes will be retained for {RuntimeRetention}", runtimeRetention);
+if (serverAuthentication.FellBackToNoPassword)
+{
+    app.Logger.LogWarning("No Pass Hash, fallback to No Pass.");
+}
+else if (serverAuthentication.Enabled)
+{
+    app.Logger.LogInformation(
+        "Password authentication is enabled using {AuthenticationFile}",
+        serverAuthentication.ConfigurationPath);
+}
 await app.RunAsync();
 
 namespace KevinZonda.Terminal.Server

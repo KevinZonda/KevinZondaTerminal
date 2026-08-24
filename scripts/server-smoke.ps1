@@ -23,7 +23,7 @@ $url = "http://127.0.0.1:$port"
 
 $server = Start-Process `
     -FilePath $executable `
-    -ArgumentList @('--urls', $url) `
+    -ArgumentList @('--urls', $url, '--auth-mode', 'disabled') `
     -WorkingDirectory $repositoryRoot `
     -WindowStyle Hidden `
     -PassThru
