@@ -59,8 +59,22 @@ interface TabDragState {
   targetIndex?: number;
 }
 
+interface SidebarSwipeState {
+  identifier: number;
+  action: 'open' | 'close';
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  claimed: boolean;
+  cancelled: boolean;
+}
+
 export class Workspace implements TerminalCallbacks {
   private static readonly EDGE_TRIGGER_WIDTH = 4;
+  private static readonly SIDEBAR_SWIPE_CLAIM_DISTANCE = 12;
+  private static readonly SIDEBAR_SWIPE_TRIGGER_DISTANCE = 60;
+  private static readonly SIDEBAR_SWIPE_AXIS_RATIO = 1.2;
   private static readonly TAB_DRAG_THRESHOLD = 6;
   private static readonly MAX_WORKSPACE_NAME_LENGTH = 64;
   private static readonly PEEK_OPEN_DELAY = 100;
@@ -105,6 +119,9 @@ export class Workspace implements TerminalCallbacks {
   private activeUsageAnchor?: HTMLElement;
   private activeUsageProvider?: 'codex' | 'kimi';
   private tabDrag?: TabDragState;
+  private sidebarSwipe?: SidebarSwipeState;
+  private suppressXtermTouchGestures = false;
+  private touchGestureResetTimer?: number;
 
   public constructor(bridge: NativeBridge) {
     this.bridge = bridge;
@@ -148,6 +165,13 @@ export class Workspace implements TerminalCallbacks {
 
     window.addEventListener('keydown', this.handleKeyboard, { capture: true });
     window.addEventListener('pointermove', this.handleEdgePointerMove, { passive: true });
+    this.app.addEventListener('touchstart', this.handleSidebarTouchStart, { capture: true, passive: true });
+    this.app.addEventListener('touchmove', this.handleSidebarTouchMove, { capture: true, passive: false });
+    this.app.addEventListener('touchend', this.handleSidebarTouchEnd, { capture: true, passive: false });
+    this.app.addEventListener('touchcancel', this.handleSidebarTouchCancel, { capture: true, passive: false });
+    this.app.addEventListener('-xterm-gesturechange', this.handleSuppressedXtermTouchGesture, { capture: true });
+    this.app.addEventListener('-xterm-gesturetap', this.handleSuppressedXtermTouchGesture, { capture: true });
+    this.app.addEventListener('-xterm-gesturecontextmenu', this.handleSuppressedXtermTouchGesture, { capture: true });
     document.documentElement.addEventListener('pointerleave', this.handleViewportPointerLeave);
     window.addEventListener('blur', this.handleWindowBlur);
     window.addEventListener('resize', () => this.hideAgentUsageTooltip());
@@ -680,6 +704,148 @@ export class Workspace implements TerminalCallbacks {
       this.setSidebarMode('hidden');
     }
   };
+
+  private readonly handleSidebarTouchStart = (event: TouchEvent): void => {
+    if (event.touches.length !== 1) {
+      this.sidebarSwipe = undefined;
+      this.suppressXtermTouchGestures = false;
+      if (this.touchGestureResetTimer !== undefined) {
+        window.clearTimeout(this.touchGestureResetTimer);
+        this.touchGestureResetTimer = undefined;
+      }
+      return;
+    }
+
+    const touch = event.changedTouches.item(0);
+    if (!touch) {
+      return;
+    }
+
+    const action: SidebarSwipeState['action'] = this.sidebarMode === 'expanded'
+      ? 'close'
+      : 'open';
+
+    this.sidebarSwipe = {
+      identifier: touch.identifier,
+      action,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      lastX: touch.clientX,
+      lastY: touch.clientY,
+      claimed: false,
+      cancelled: false
+    };
+  };
+
+  private readonly handleSidebarTouchMove = (event: TouchEvent): void => {
+    const swipe = this.sidebarSwipe;
+    const touch = swipe && this.findTouch(event.touches, swipe.identifier);
+    if (!swipe || !touch || swipe.cancelled) {
+      return;
+    }
+
+    swipe.lastX = touch.clientX;
+    swipe.lastY = touch.clientY;
+    const deltaX = swipe.lastX - swipe.startX;
+    const deltaY = swipe.lastY - swipe.startY;
+    const horizontalDistance = Math.abs(deltaX);
+    const verticalDistance = Math.abs(deltaY);
+
+    if (!swipe.claimed) {
+      if (verticalDistance >= Workspace.SIDEBAR_SWIPE_CLAIM_DISTANCE &&
+          verticalDistance > horizontalDistance) {
+        swipe.cancelled = true;
+        return;
+      }
+
+      const correctDirection = swipe.action === 'open' ? deltaX > 0 : deltaX < 0;
+      if (horizontalDistance >= Workspace.SIDEBAR_SWIPE_CLAIM_DISTANCE && !correctDirection) {
+        swipe.cancelled = true;
+        return;
+      }
+      if (!correctDirection ||
+          horizontalDistance < Workspace.SIDEBAR_SWIPE_CLAIM_DISTANCE ||
+          horizontalDistance <= verticalDistance * Workspace.SIDEBAR_SWIPE_AXIS_RATIO) {
+        return;
+      }
+
+      swipe.claimed = true;
+      this.suppressXtermTouchGestures = true;
+      this.cancelPeekOpen();
+      this.cancelPeekClose();
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  private readonly handleSidebarTouchEnd = (event: TouchEvent): void => {
+    const swipe = this.sidebarSwipe;
+    const touch = swipe && this.findTouch(event.changedTouches, swipe.identifier);
+    if (!swipe || !touch) {
+      return;
+    }
+
+    swipe.lastX = touch.clientX;
+    swipe.lastY = touch.clientY;
+    this.finishSidebarSwipe(event, true);
+  };
+
+  private readonly handleSidebarTouchCancel = (event: TouchEvent): void => {
+    if (!this.sidebarSwipe) {
+      return;
+    }
+
+    this.finishSidebarSwipe(event, false);
+  };
+
+  private finishSidebarSwipe(event: TouchEvent, allowAction: boolean): void {
+    const swipe = this.sidebarSwipe;
+    this.sidebarSwipe = undefined;
+    if (!swipe?.claimed) {
+      return;
+    }
+
+    event.preventDefault();
+    const deltaX = swipe.lastX - swipe.startX;
+    const deltaY = swipe.lastY - swipe.startY;
+    const correctDirection = swipe.action === 'open' ? deltaX > 0 : deltaX < 0;
+    const triggered = allowAction && correctDirection &&
+      Math.abs(deltaX) >= Workspace.SIDEBAR_SWIPE_TRIGGER_DISTANCE &&
+      Math.abs(deltaX) > Math.abs(deltaY) * Workspace.SIDEBAR_SWIPE_AXIS_RATIO;
+    if (triggered) {
+      this.setSidebarMode(swipe.action === 'open' ? 'expanded' : 'hidden');
+    }
+
+    if (this.touchGestureResetTimer !== undefined) {
+      window.clearTimeout(this.touchGestureResetTimer);
+    }
+    // xterm's document-level touchend listener runs after this capture handler.
+    // Keep suppression through that dispatch so it cannot synthesize a tap.
+    this.touchGestureResetTimer = window.setTimeout(() => {
+      this.touchGestureResetTimer = undefined;
+      this.suppressXtermTouchGestures = false;
+    }, 0);
+  }
+
+  private readonly handleSuppressedXtermTouchGesture = (event: Event): void => {
+    if (!this.suppressXtermTouchGestures) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private findTouch(touches: TouchList, identifier: number): Touch | undefined {
+    for (let index = 0; index < touches.length; index++) {
+      const touch = touches.item(index);
+      if (touch?.identifier === identifier) {
+        return touch;
+      }
+    }
+    return undefined;
+  }
 
   private readonly handleWindowBlur = (): void => {
     this.pointerInsideViewport = false;

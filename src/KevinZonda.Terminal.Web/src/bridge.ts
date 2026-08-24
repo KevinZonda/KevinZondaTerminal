@@ -139,11 +139,14 @@ interface PendingRequest {
 }
 
 export class NativeBridge {
+  private static readonly FONT_SIZE_STORAGE_KEY = 'kterm.fontSize';
   private readonly handlers = new Map<string, Set<BridgeEventHandler>>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly webView = window.chrome?.webview;
   private readonly socket?: WebSocket;
   private readonly connectionReady: Promise<void>;
+  private currentSettings: AppSettings = structuredClone(DEFAULT_SETTINGS);
+  private serverFontSize = DEFAULT_SETTINGS.font.size;
   private socketClosed = false;
 
   public constructor() {
@@ -154,6 +157,7 @@ export class NativeBridge {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    window.addEventListener('storage', this.handleBrowserStorage);
     this.socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
     this.connectionReady = new Promise<void>((resolve, reject) => {
       this.socket!.addEventListener('open', () => resolve(), { once: true });
@@ -236,7 +240,20 @@ export class NativeBridge {
   }
 
   public async saveFontSize(size: number): Promise<AppSettings> {
-    return this.settingsFrom(await this.request('settings.fontSize', { size }));
+    const normalizedSize = this.normalizeFontSize(size);
+    if (!this.webView) {
+      this.saveBrowserFontSize(normalizedSize);
+      this.currentSettings = {
+        ...this.currentSettings,
+        font: {
+          ...this.currentSettings.font,
+          size: normalizedSize
+        }
+      };
+      return structuredClone(this.currentSettings);
+    }
+
+    return this.settingsFrom(await this.request('settings.fontSize', { size: normalizedSize }));
   }
 
   public async refreshAgentUsage(provider: 'codex' | 'kimi'): Promise<boolean> {
@@ -247,7 +264,13 @@ export class NativeBridge {
   public settingsFrom(event: BridgeEvent): AppSettings {
     const settings = event.payload.settings;
     if (typeof settings !== 'object' || settings === null) {
-      return structuredClone(DEFAULT_SETTINGS);
+      const defaults = structuredClone(DEFAULT_SETTINGS);
+      if (!this.webView) {
+        this.serverFontSize = defaults.font.size;
+        defaults.font.size = this.loadBrowserFontSize() ?? defaults.font.size;
+      }
+      this.currentSettings = defaults;
+      return structuredClone(defaults);
     }
 
     const partialSettings = settings as Partial<AppSettings>;
@@ -271,16 +294,16 @@ export class NativeBridge {
       ? font.family.trim()
       : DEFAULT_SETTINGS.font.family;
     const size = typeof font.size === 'number' && Number.isFinite(font.size)
-      ? Math.min(72, Math.max(8, font.size))
+      ? this.normalizeFontSize(font.size)
       : DEFAULT_SETTINGS.font.size;
     const lineHeight = typeof font.lineHeight === 'number' && Number.isFinite(font.lineHeight)
       ? Math.min(2, Math.max(0.8, font.lineHeight))
       : DEFAULT_SETTINGS.font.lineHeight;
 
-    return {
+    const normalizedSettings: AppSettings = {
       font: {
         family,
-        size,
+        size: this.webView ? size : (this.loadBrowserFontSize() ?? size),
         lineHeight,
         enableLigatures: font.enableLigatures === true
       },
@@ -300,6 +323,9 @@ export class NativeBridge {
         exitBehavior: shell.exitBehavior === 'CloseTab' ? 'CloseTab' : 'KeepTab'
       }
     };
+    this.serverFontSize = size;
+    this.currentSettings = normalizedSettings;
+    return structuredClone(normalizedSettings);
   }
 
   public agentUsageFrom(event: BridgeEvent): AgentUsageStatus {
@@ -546,4 +572,63 @@ export class NativeBridge {
     const value = event.payload[name];
     return typeof value === 'number' ? value : 0;
   }
+
+  private normalizeFontSize(size: number): number {
+    return Number.isFinite(size)
+      ? Math.min(72, Math.max(8, size))
+      : DEFAULT_SETTINGS.font.size;
+  }
+
+  private loadBrowserFontSize(): number | undefined {
+    try {
+      const storedSize = window.localStorage.getItem(NativeBridge.FONT_SIZE_STORAGE_KEY);
+      if (storedSize === null || storedSize.trim() === '') {
+        return undefined;
+      }
+
+      const size = Number(storedSize);
+      return Number.isFinite(size) ? this.normalizeFontSize(size) : undefined;
+    } catch {
+      // Storage can be unavailable in restricted/private browser contexts.
+      return undefined;
+    }
+  }
+
+  private saveBrowserFontSize(size: number): void {
+    try {
+      window.localStorage.setItem(NativeBridge.FONT_SIZE_STORAGE_KEY, String(size));
+    } catch {
+      // Keep the in-memory setting usable when persistent storage is blocked.
+    }
+  }
+
+  private readonly handleBrowserStorage = (event: StorageEvent): void => {
+    if (event.key !== NativeBridge.FONT_SIZE_STORAGE_KEY) {
+      return;
+    }
+
+    const storedSize = event.newValue === null || event.newValue.trim() === ''
+      ? Number.NaN
+      : Number(event.newValue);
+    const size = Number.isFinite(storedSize)
+      ? this.normalizeFontSize(storedSize)
+      : this.serverFontSize;
+    if (size === this.currentSettings.font.size) {
+      return;
+    }
+
+    this.currentSettings = {
+      ...this.currentSettings,
+      font: {
+        ...this.currentSettings.font,
+        size
+      }
+    };
+    const settings = structuredClone(this.currentSettings);
+    this.handlers.get('app.settingsChanged')?.forEach(handler => handler({
+      version: 1,
+      type: 'app.settingsChanged',
+      payload: { settings }
+    }));
+  };
 }

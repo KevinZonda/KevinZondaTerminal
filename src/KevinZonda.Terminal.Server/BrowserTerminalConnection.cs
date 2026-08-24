@@ -17,7 +17,6 @@ internal sealed class BrowserTerminalConnection
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly WebSocket _socket;
-    private readonly SettingsStore _settingsStore;
     private readonly TerminalSessionManager _sessions;
     private readonly AgentUsageStatusService _agentUsage;
     private readonly SystemMetricsService _systemMetrics;
@@ -35,7 +34,6 @@ internal sealed class BrowserTerminalConnection
         ServerOptions options)
     {
         _socket = socket;
-        _settingsStore = settingsStore;
         _settings = settingsStore.Load();
         _sessions = new TerminalSessionManager(_settings, options.StartingDirectory);
         _agentUsage = new AgentUsageStatusService(_sessions, _settings);
@@ -211,17 +209,17 @@ internal sealed class BrowserTerminalConnection
                 break;
 
             case "settings.fontSize":
-                _settings = await _settingsStore.SaveAsync(
+                // Browser clients persist font size in localStorage. Keep this
+                // legacy request connection-local so older cached frontends can
+                // no longer overwrite the server host's desktop configuration.
+                _settings = AppSettings.Normalize(
                     _settings with
                     {
                         Font = _settings.Font with
                         {
                             Size = GetDouble(message.Payload, "size", AppSettings.DefaultFontSize)
                         }
-                    },
-                    cancellationToken).ConfigureAwait(false);
-                await _sessions.UpdateSettingsAsync(_settings).ConfigureAwait(false);
-                _agentUsage.UpdateSettings(_settings);
+                    });
                 Post("settings.saved", message.RequestId, payload: new { settings = _settings });
                 break;
 

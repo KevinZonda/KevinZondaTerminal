@@ -56,6 +56,11 @@ export class TerminalController {
   private lastRows = 0;
   private altScrollRemainder = 0;
   private altScrollWasAltBuffer = false;
+  private readonly pinchTouches = new Map<number, { x: number; y: number }>();
+  private pinchStartDistance?: number;
+  private pinchStartFontSize = 0;
+  private suppressXtermTouchGestures = false;
+  private touchGestureResetTimer?: number;
   private disposed = false;
 
   public constructor(
@@ -120,6 +125,14 @@ export class TerminalController {
     this.element.addEventListener('focusin', () => this.callbacks.onFocus(this.sessionId));
     this.host.addEventListener('contextmenu', this.handleContextMenu, { capture: true });
     this.host.addEventListener('wheel', this.handleWheel, { capture: true, passive: false });
+    this.host.addEventListener('touchstart', this.handleTouchStart, { capture: true, passive: false });
+    this.host.addEventListener('touchmove', this.handleTouchMove, { capture: true, passive: false });
+    this.host.addEventListener('touchend', this.handleTouchEnd, { capture: true, passive: false });
+    this.host.addEventListener('touchcancel', this.handleTouchEnd, { capture: true, passive: false });
+    this.host.addEventListener('-xterm-gesturestart', this.handleXtermTouchGesture, { capture: true });
+    this.host.addEventListener('-xterm-gesturechange', this.handleXtermTouchGesture, { capture: true });
+    this.host.addEventListener('-xterm-gesturetap', this.handleXtermTouchGesture, { capture: true });
+    this.host.addEventListener('-xterm-gesturecontextmenu', this.handleXtermTouchGesture, { capture: true });
     this.resizeObserver = new ResizeObserver(() => this.scheduleFit());
     this.resizeObserver.observe(this.element);
   }
@@ -284,8 +297,19 @@ export class TerminalController {
     if (this.fitTimer !== undefined) {
       window.clearTimeout(this.fitTimer);
     }
+    if (this.touchGestureResetTimer !== undefined) {
+      window.clearTimeout(this.touchGestureResetTimer);
+    }
     this.cancelWebglReclaim();
     this.host.removeEventListener('wheel', this.handleWheel, { capture: true });
+    this.host.removeEventListener('touchstart', this.handleTouchStart, { capture: true });
+    this.host.removeEventListener('touchmove', this.handleTouchMove, { capture: true });
+    this.host.removeEventListener('touchend', this.handleTouchEnd, { capture: true });
+    this.host.removeEventListener('touchcancel', this.handleTouchEnd, { capture: true });
+    this.host.removeEventListener('-xterm-gesturestart', this.handleXtermTouchGesture, { capture: true });
+    this.host.removeEventListener('-xterm-gesturechange', this.handleXtermTouchGesture, { capture: true });
+    this.host.removeEventListener('-xterm-gesturetap', this.handleXtermTouchGesture, { capture: true });
+    this.host.removeEventListener('-xterm-gesturecontextmenu', this.handleXtermTouchGesture, { capture: true });
     this.resizeObserver.disconnect();
     this.disposables.forEach(disposable => disposable.dispose());
     this.disposeWebgl();
@@ -468,21 +492,122 @@ export class TerminalController {
     event.stopImmediatePropagation();
 
     const currentSize = this.terminal.options.fontSize ?? 14;
+    this.setFontSize(currentSize + (event.deltaY < 0 ? 1 : -1));
+  }
+
+  private setFontSize(fontSize: number, focus = true): void {
     const nextSize = Math.min(
       TerminalController.MAX_FONT_SIZE,
-      Math.max(
-        TerminalController.MIN_FONT_SIZE,
-        currentSize + (event.deltaY < 0 ? 1 : -1)
-      )
+      Math.max(TerminalController.MIN_FONT_SIZE, Math.round(fontSize))
     );
-    if (nextSize === currentSize) {
+    if (nextSize === this.terminal.options.fontSize) {
       return;
     }
 
     this.terminal.options.fontSize = nextSize;
     this.scheduleFit();
-    this.focus();
+    if (focus) {
+      this.focus();
+    }
     this.callbacks.onFontSizeChanged(this.sessionId, nextSize);
+  }
+
+  private readonly handleTouchStart = (event: TouchEvent): void => {
+    if (this.touchGestureResetTimer !== undefined) {
+      window.clearTimeout(this.touchGestureResetTimer);
+      this.touchGestureResetTimer = undefined;
+    }
+
+    this.updatePinchTouches(event.changedTouches);
+    if (this.pinchTouches.size < 2) {
+      return;
+    }
+
+    const distance = this.getPinchDistance();
+    if (distance === undefined || distance <= 0) {
+      return;
+    }
+
+    this.pinchStartDistance = distance;
+    this.pinchStartFontSize = this.terminal.options.fontSize ?? 14;
+    this.suppressXtermTouchGestures = true;
+    event.preventDefault();
+  };
+
+  private readonly handleTouchMove = (event: TouchEvent): void => {
+    this.updatePinchTouches(event.changedTouches);
+    if (!this.suppressXtermTouchGestures) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.pinchStartDistance === undefined || this.pinchTouches.size < 2) {
+      return;
+    }
+
+    const distance = this.getPinchDistance();
+    if (distance === undefined) {
+      return;
+    }
+    this.setFontSize(this.pinchStartFontSize * distance / this.pinchStartDistance, false);
+  };
+
+  private readonly handleTouchEnd = (event: TouchEvent): void => {
+    for (let index = 0; index < event.changedTouches.length; index++) {
+      const touch = event.changedTouches.item(index);
+      if (touch) {
+        this.pinchTouches.delete(touch.identifier);
+      }
+    }
+
+    if (!this.suppressXtermTouchGestures) {
+      return;
+    }
+
+    event.preventDefault();
+    if (this.pinchTouches.size < 2) {
+      this.pinchStartDistance = undefined;
+    }
+    if (this.pinchTouches.size !== 0) {
+      return;
+    }
+
+    // Let xterm observe touchend and clean up its own touch records first. Its
+    // synthetic tap/context-menu events are suppressed for the same dispatch.
+    this.touchGestureResetTimer = window.setTimeout(() => {
+      this.touchGestureResetTimer = undefined;
+      this.suppressXtermTouchGestures = false;
+    }, 0);
+  };
+
+  private readonly handleXtermTouchGesture = (event: Event): void => {
+    if (!this.suppressXtermTouchGestures) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private updatePinchTouches(touches: TouchList): void {
+    for (let index = 0; index < touches.length; index++) {
+      const touch = touches.item(index);
+      if (touch) {
+        this.pinchTouches.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
+    }
+  }
+
+  private getPinchDistance(): number | undefined {
+    const touches = Array.from(this.pinchTouches.values());
+    const first = touches[0];
+    const second = touches[1];
+    if (!first || !second) {
+      return undefined;
+    }
+
+    return Math.hypot(second.x - first.x, second.y - first.y);
   }
 
 }
