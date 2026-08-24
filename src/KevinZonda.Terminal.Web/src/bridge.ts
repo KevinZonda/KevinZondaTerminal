@@ -136,6 +136,12 @@ type BridgeEventHandler = (event: BridgeEvent) => void;
 interface PendingRequest {
   resolve: (event: BridgeEvent) => void;
   reject: (error: Error) => void;
+  event: BridgeEvent;
+}
+
+interface PendingInputState {
+  nextSequence: number;
+  pending: Map<number, BridgeEvent>;
 }
 
 export class NativeBridge {
@@ -143,11 +149,22 @@ export class NativeBridge {
   private readonly handlers = new Map<string, Set<BridgeEventHandler>>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly webView = window.chrome?.webview;
-  private readonly socket?: WebSocket;
+  private socket?: WebSocket;
   private readonly connectionReady: Promise<void>;
+  private readonly runtimeId = createId();
+  private readonly pendingInputs = new Map<string, PendingInputState>();
+  private readonly pendingResizes = new Map<string, BridgeEvent>();
+  private readonly pendingCloses = new Map<string, BridgeEvent>();
+  private readonly outputAcks = new Map<string, number>();
+  private readonly receivedOutputSequences = new Map<string, number>();
+  private readonly closedSessionIds = new Set<string>();
+  private resolveConnectionReady: () => void = () => undefined;
+  private reconnectTimer?: number;
+  private reconnectAttempt = 0;
+  private attached = false;
+  private everConnected = false;
   private currentSettings: AppSettings = structuredClone(DEFAULT_SETTINGS);
   private serverFontSize = DEFAULT_SETTINGS.font.size;
-  private socketClosed = false;
 
   public constructor() {
     if (this.webView) {
@@ -156,26 +173,12 @@ export class NativeBridge {
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     window.addEventListener('storage', this.handleBrowserStorage);
-    this.socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-    this.connectionReady = new Promise<void>((resolve, reject) => {
-      this.socket!.addEventListener('open', () => resolve(), { once: true });
-      this.socket!.addEventListener('error', () => reject(new Error('Unable to connect to kterm-server.')), {
-        once: true
-      });
+    window.addEventListener('online', () => this.reconnectNow());
+    this.connectionReady = new Promise<void>(resolve => {
+      this.resolveConnectionReady = resolve;
     });
-    this.socket.addEventListener('message', event => {
-      if (typeof event.data !== 'string') {
-        return;
-      }
-      try {
-        this.acceptMessage(JSON.parse(event.data));
-      } catch {
-        // Ignore malformed server messages; valid bridge traffic is JSON.
-      }
-    });
-    this.socket.addEventListener('close', () => this.handleSocketClosed());
+    this.connectSocket();
   }
 
   public async ready(): Promise<AppInitialState> {
@@ -194,27 +197,74 @@ export class NativeBridge {
       throw new Error('The native host did not return a session ID.');
     }
 
-    return {
+    const session = {
       sessionId: event.sessionId,
       shellName: this.payloadString(event, 'shellName') || 'shell',
       processId: this.payloadNumber(event, 'processId')
     };
+    if (!this.webView) {
+      this.closedSessionIds.delete(session.sessionId);
+      const inputAck = this.payloadNumber(event, 'inputAck');
+      if (!this.pendingInputs.has(session.sessionId)) {
+        this.pendingInputs.set(session.sessionId, {
+          nextSequence: Math.max(1, inputAck + 1),
+          pending: new Map()
+        });
+      }
+      if (!this.outputAcks.has(session.sessionId)) {
+        this.outputAcks.set(session.sessionId, 0);
+      }
+      if (!this.receivedOutputSequences.has(session.sessionId)) {
+        this.receivedOutputSequences.set(session.sessionId, 0);
+      }
+    }
+    return session;
   }
 
   public sendInput(sessionId: string, data: string): void {
-    this.send('session.input', { data }, sessionId);
+    this.queueInput('session.input', sessionId, { data });
   }
 
   public sendBinaryInput(sessionId: string, data: string): void {
-    this.send('session.binaryInput', { data: btoa(data) }, sessionId);
+    this.queueInput('session.binaryInput', sessionId, { data: btoa(data) });
   }
 
   public resize(sessionId: string, cols: number, rows: number): void {
-    this.send('session.resize', { cols, rows }, sessionId);
+    if (this.webView) {
+      this.send('session.resize', { cols, rows }, sessionId);
+      return;
+    }
+    const event = this.createEvent('session.resize', { cols, rows }, sessionId);
+    this.pendingResizes.set(sessionId, event);
+    this.sendBrowserEvent(event);
   }
 
   public closeSession(sessionId: string): void {
-    this.send('session.close', {}, sessionId);
+    if (this.webView) {
+      this.send('session.close', {}, sessionId);
+      return;
+    }
+    const operationId = createId();
+    const event = this.createEvent('session.close', { operationId }, sessionId, operationId);
+    this.closedSessionIds.add(sessionId);
+    this.pendingCloses.set(sessionId, event);
+    this.sendBrowserEvent(event);
+  }
+
+  public acknowledgeOutput(sessionId: string, outputSeq: number): void {
+    if (this.webView || this.closedSessionIds.has(sessionId) ||
+        !Number.isSafeInteger(outputSeq) || outputSeq <= 0) {
+      return;
+    }
+    const acknowledged = this.outputAcks.get(sessionId) ?? 0;
+    if (outputSeq <= acknowledged) {
+      return;
+    }
+    this.outputAcks.set(sessionId, outputSeq);
+    this.receivedOutputSequences.set(
+      sessionId,
+      Math.max(this.receivedOutputSequences.get(sessionId) ?? 0, outputSeq));
+    this.sendBrowserEvent(this.createEvent('session.outputAck', { outputSeq }, sessionId));
   }
 
   public openSettings(): void {
@@ -479,12 +529,108 @@ export class NativeBridge {
     this.acceptMessage(messageEvent.data);
   };
 
+  private connectSocket(): void {
+    if (this.webView || this.socket?.readyState === WebSocket.CONNECTING ||
+        this.socket?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    this.socket = socket;
+    socket.addEventListener('open', () => {
+      if (this.socket !== socket) {
+        socket.close();
+        return;
+      }
+      const requestId = createId();
+      const sessions = [...this.outputAcks].map(([sessionId, lastAppliedOutputSeq]) => ({
+        sessionId,
+        lastAppliedOutputSeq
+      }));
+      socket.send(JSON.stringify(this.createEvent('runtime.attach', {
+        runtimeId: this.runtimeId,
+        sessions
+      }, undefined, requestId)));
+    });
+    socket.addEventListener('message', event => {
+      if (this.socket !== socket || typeof event.data !== 'string') {
+        return;
+      }
+      try {
+        this.acceptMessage(JSON.parse(event.data));
+      } catch {
+        // Ignore malformed server messages; valid bridge traffic is JSON.
+      }
+    });
+    socket.addEventListener('error', () => {
+      if (this.socket === socket && socket.readyState !== WebSocket.CLOSED) {
+        socket.close();
+      }
+    });
+    socket.addEventListener('close', () => this.handleSocketClosed(socket));
+  }
+
   private acceptMessage(value: unknown): void {
     if (!this.isBridgeEvent(value)) {
       return;
     }
 
     const event = value;
+    if (!this.webView && event.type === 'runtime.attached') {
+      this.attached = true;
+      this.reconnectAttempt = 0;
+      this.reconcileAttachedSessions(event);
+      this.flushBrowserQueues();
+      this.resolveConnectionReady();
+      this.emitConnectionChanged('connected');
+      this.everConnected = true;
+    }
+
+    if (!this.webView && event.type === 'session.inputAck' && event.sessionId) {
+      const acknowledged = this.payloadNumber(event, 'inputSeq');
+      const state = this.pendingInputs.get(event.sessionId);
+      if (state) {
+        for (const sequence of state.pending.keys()) {
+          if (sequence <= acknowledged) {
+            state.pending.delete(sequence);
+          }
+        }
+        state.nextSequence = Math.max(state.nextSequence, acknowledged + 1);
+      }
+    }
+
+    if (!this.webView && event.type === 'session.inputNack' && event.sessionId) {
+      const expected = this.payloadNumber(event, 'expectedInputSeq');
+      const state = this.pendingInputs.get(event.sessionId);
+      if (state) {
+        [...state.pending]
+          .filter(([sequence]) => sequence >= expected)
+          .sort(([left], [right]) => left - right)
+          .forEach(([, pendingEvent]) => this.sendBrowserEvent(pendingEvent));
+      }
+    }
+
+    if (!this.webView && event.type === 'session.output' && event.sessionId) {
+      const outputSeq = this.payloadNumber(event, 'outputSeq');
+      if (outputSeq > 0) {
+        const received = this.receivedOutputSequences.get(event.sessionId) ??
+          this.outputAcks.get(event.sessionId) ?? 0;
+        if (outputSeq <= received) {
+          return;
+        }
+        this.receivedOutputSequences.set(event.sessionId, outputSeq);
+      }
+    }
+
+    if (!this.webView && event.type === 'session.closed' && event.sessionId) {
+      this.pendingCloses.delete(event.sessionId);
+      this.pendingResizes.delete(event.sessionId);
+      this.pendingInputs.delete(event.sessionId);
+      this.outputAcks.delete(event.sessionId);
+      this.receivedOutputSequences.delete(event.sessionId);
+    }
+
     if (event.requestId) {
       const request = this.pending.get(event.requestId);
       if (request) {
@@ -500,31 +646,137 @@ export class NativeBridge {
     this.handlers.get(event.type)?.forEach(handler => handler(event));
   }
 
-  private handleSocketClosed(): void {
-    this.socketClosed = true;
-    const error = new Error('The connection to kterm-server was closed.');
-    for (const request of this.pending.values()) {
-      request.reject(error);
+  private handleSocketClosed(socket: WebSocket): void {
+    if (this.socket !== socket) {
+      return;
     }
-    this.pending.clear();
-    this.handlers.get('app.runtimeFailed')?.forEach(handler => handler({
+
+    this.socket = undefined;
+    this.attached = false;
+    for (const [sessionId, acknowledged] of this.outputAcks) {
+      this.receivedOutputSequences.set(sessionId, acknowledged);
+    }
+
+    const delays = [500, 1000, 2000, 4000, 8000, 15_000];
+    const baseDelay = delays[Math.min(this.reconnectAttempt, delays.length - 1)]!;
+    this.reconnectAttempt++;
+    const delay = Math.round(baseDelay * (0.8 + Math.random() * 0.4));
+    this.emitConnectionChanged('reconnecting', delay);
+    window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.connectSocket();
+    }, delay);
+  }
+
+  private reconnectNow(): void {
+    if (this.webView || this.attached) {
+      return;
+    }
+    window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = undefined;
+    this.connectSocket();
+  }
+
+  private reconcileAttachedSessions(event: BridgeEvent): void {
+    const rawSessions = event.payload.sessions;
+    const attachedSessions = new Map<string, Record<string, unknown>>();
+    if (Array.isArray(rawSessions)) {
+      for (const value of rawSessions) {
+        if (typeof value !== 'object' || value === null) {
+          continue;
+        }
+        const session = value as Record<string, unknown>;
+        if (typeof session.sessionId === 'string') {
+          attachedSessions.set(session.sessionId, session);
+        }
+      }
+    }
+
+    for (const sessionId of [...this.outputAcks.keys()]) {
+      const attached = attachedSessions.get(sessionId);
+      if (attached) {
+        const inputAck = typeof attached.inputAck === 'number' ? attached.inputAck : 0;
+        const input = this.pendingInputs.get(sessionId);
+        if (input) {
+          for (const sequence of input.pending.keys()) {
+            if (sequence <= inputAck) {
+              input.pending.delete(sequence);
+            }
+          }
+          input.nextSequence = Math.max(input.nextSequence, inputAck + 1);
+        }
+        continue;
+      }
+
+      const wasClosing = this.pendingCloses.has(sessionId);
+      this.pendingCloses.delete(sessionId);
+      this.pendingResizes.delete(sessionId);
+      this.pendingInputs.delete(sessionId);
+      this.outputAcks.delete(sessionId);
+      this.receivedOutputSequences.delete(sessionId);
+      this.closedSessionIds.add(sessionId);
+      const missingEvent: BridgeEvent = wasClosing
+        ? this.createEvent('session.closed', {}, sessionId)
+        : this.createEvent('session.exited', {
+            exitCode: 1,
+            failure: 'The server runtime expired before it could reconnect.'
+          }, sessionId);
+      this.handlers.get(missingEvent.type)?.forEach(handler => handler(missingEvent));
+    }
+  }
+
+  private emitConnectionChanged(state: 'connected' | 'reconnecting', retryInMs?: number): void {
+    this.handlers.get('server.connectionChanged')?.forEach(handler => handler({
       version: 1,
-      type: 'app.runtimeFailed',
-      payload: { kind: 'server-connection' }
+      type: 'server.connectionChanged',
+      payload: {
+        state,
+        retryInMs,
+        reconnected: state === 'connected' && this.everConnected
+      }
     }));
+  }
+
+  private flushBrowserQueues(): void {
+    for (const request of this.pending.values()) {
+      this.sendBrowserEvent(request.event);
+    }
+    for (const state of this.pendingInputs.values()) {
+      [...state.pending]
+        .sort(([left], [right]) => left - right)
+        .forEach(([, event]) => this.sendBrowserEvent(event));
+    }
+    this.pendingResizes.forEach(event => this.sendBrowserEvent(event));
+    this.pendingCloses.forEach(event => this.sendBrowserEvent(event));
+    this.outputAcks.forEach((outputSeq, sessionId) => {
+      if (outputSeq > 0) {
+        this.sendBrowserEvent(this.createEvent('session.outputAck', { outputSeq }, sessionId));
+      }
+    });
   }
 
   private request(type: string, payload: Record<string, unknown>): Promise<BridgeEvent> {
     const requestId = createId();
+    const requestPayload = !this.webView && type === 'session.create'
+      ? { ...payload, operationId: requestId }
+      : payload;
+    const event = this.createEvent(type, requestPayload, undefined, requestId);
     return new Promise<BridgeEvent>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
-      this.send(type, payload, undefined, requestId);
+      this.pending.set(requestId, { resolve, reject, event });
+      if (this.webView) {
+        this.webView.postMessage(event);
+      } else {
+        this.sendBrowserEvent(event);
+      }
 
-      window.setTimeout(() => {
-        if (this.pending.delete(requestId)) {
-          reject(new Error(`Native request '${type}' timed out.`));
-        }
-      }, 15_000);
+      if (this.webView) {
+        window.setTimeout(() => {
+          if (this.pending.delete(requestId)) {
+            reject(new Error(`Native request '${type}' timed out.`));
+          }
+        }, 15_000);
+      }
     });
   }
 
@@ -534,21 +786,47 @@ export class NativeBridge {
     sessionId?: string,
     requestId?: string
   ): void {
-    const event: BridgeEvent = {
-      version: 1,
-      type,
-      requestId,
-      sessionId,
-      payload
-    };
+    const event = this.createEvent(type, payload, sessionId, requestId);
     if (this.webView) {
       this.webView.postMessage(event);
       return;
     }
-    if (!this.socket || this.socketClosed || this.socket.readyState !== WebSocket.OPEN) {
-      throw new Error('The connection to kterm-server is not open.');
+    this.sendBrowserEvent(event);
+  }
+
+  private queueInput(type: 'session.input' | 'session.binaryInput', sessionId: string,
+                     payload: Record<string, unknown>): void {
+    if (this.webView) {
+      this.send(type, payload, sessionId);
+      return;
+    }
+
+    const state = this.pendingInputs.get(sessionId) ?? {
+      nextSequence: 1,
+      pending: new Map<number, BridgeEvent>()
+    };
+    this.pendingInputs.set(sessionId, state);
+    const inputSeq = state.nextSequence++;
+    const event = this.createEvent(type, { ...payload, inputSeq }, sessionId);
+    state.pending.set(inputSeq, event);
+    this.sendBrowserEvent(event);
+  }
+
+  private createEvent(
+    type: string,
+    payload: Record<string, unknown>,
+    sessionId?: string,
+    requestId?: string
+  ): BridgeEvent {
+    return { version: 1, type, requestId, sessionId, payload };
+  }
+
+  private sendBrowserEvent(event: BridgeEvent): boolean {
+    if (!this.attached || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return false;
     }
     this.socket.send(JSON.stringify(event));
+    return true;
   }
 
   private isBridgeEvent(value: unknown): value is BridgeEvent {

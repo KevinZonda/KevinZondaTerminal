@@ -24,7 +24,12 @@ if (string.IsNullOrWhiteSpace(startingDirectory) || !Directory.Exists(startingDi
 startingDirectory = Path.GetFullPath(startingDirectory);
 
 builder.Services.AddSingleton(new SettingsStore());
-builder.Services.AddSingleton(new ServerOptions(startingDirectory));
+var runtimeRetentionMinutes = builder.Configuration.GetValue<double?>("runtime-retention-minutes") ?? 30;
+var runtimeRetention = TimeSpan.FromMinutes(Math.Clamp(runtimeRetentionMinutes, 0.1, 24 * 60));
+builder.Services.AddSingleton(new ServerOptions(startingDirectory, runtimeRetention));
+builder.Services.AddSingleton(services => new BrowserTerminalRuntimeRegistry(
+    services.GetRequiredService<SettingsStore>(),
+    services.GetRequiredService<ServerOptions>()));
 
 var app = builder.Build();
 app.UseWebSockets(new WebSocketOptions
@@ -44,8 +49,7 @@ app.Map("/ws", async context =>
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
     var runtime = new BrowserTerminalConnection(
         socket,
-        context.RequestServices.GetRequiredService<SettingsStore>(),
-        context.RequestServices.GetRequiredService<ServerOptions>());
+        context.RequestServices.GetRequiredService<BrowserTerminalRuntimeRegistry>());
     var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
     using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(
         context.RequestAborted,
@@ -75,9 +79,10 @@ app.MapGet("/{**path}", async context =>
 });
 
 app.Logger.LogInformation("Shell sessions will start in {StartingDirectory}", startingDirectory);
+app.Logger.LogInformation("Disconnected browser runtimes will be retained for {RuntimeRetention}", runtimeRetention);
 await app.RunAsync();
 
 namespace KevinZonda.Terminal.Server
 {
-    internal sealed record ServerOptions(string StartingDirectory);
+    internal sealed record ServerOptions(string StartingDirectory, TimeSpan RuntimeRetention);
 }

@@ -65,7 +65,9 @@ dotnet run --project src\KevinZonda.Terminal.Server -- `
   --working-directory C:\work
 ```
 
-每个浏览器连接拥有独立的 Workspace、ConPTY 和 Shell；连接关闭后，Server 会回收该连接创建的全部进程。
+每个浏览器页面拥有独立的 Workspace、ConPTY 和 Shell。WebSocket 断开后，页面会按指数退避自动重连，
+并恢复原来的 ConPTY、Shell PID 和未确认输出；断开的 Runtime 默认保留 30 分钟。可通过
+`--runtime-retention-minutes` 调整保留时间。
 当前 Server 按本地可信网络场景实现，不包含认证或 TLS。
 
 `.csproj` 会执行前端的 `pnpm install --frozen-lockfile`（首次）和 `pnpm run build`，随后把 Vite 产物嵌入应用程序集。

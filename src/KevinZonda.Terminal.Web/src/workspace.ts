@@ -101,7 +101,7 @@ export class Workspace implements TerminalCallbacks {
   private mobileViewportBaselineHeight = window.visualViewport?.height ?? window.innerHeight;
   private mobileViewportBaselineWidth = window.visualViewport?.width ?? window.innerWidth;
   private readonly terminals = new Map<string, TerminalController>();
-  private readonly earlyOutput = new Map<string, string[]>();
+  private readonly earlyOutput = new Map<string, Array<{ data: string; outputSeq: number }>>();
   private readonly closedSessionIds = new Set<string>();
   private readonly pendingExitedSessionIds = new Set<string>();
   private readonly workspaces: WorkspaceState[] = [];
@@ -171,6 +171,14 @@ export class Workspace implements TerminalCallbacks {
     });
     this.bridge.on('systemMetrics.changed', event => {
       this.renderSystemMetrics(this.bridge.systemMetricsFrom(event));
+    });
+    this.bridge.on('server.connectionChanged', event => {
+      const state = this.payloadString(event, 'state');
+      if (state === 'reconnecting') {
+        this.setStatus('Connection lost. Reconnecting…');
+      } else if (state === 'connected' && event.payload.reconnected === true) {
+        this.setStatus('');
+      }
     });
     this.bridge.on('app.runtimeFailed', event => {
       this.setStatus(`WebView2 process failed: ${this.payloadString(event, 'kind')}`, true);
@@ -992,7 +1000,9 @@ export class Workspace implements TerminalCallbacks {
 
     const pending = this.earlyOutput.get(session.sessionId);
     if (pending) {
-      pending.forEach(data => terminal.write(data));
+      pending.forEach(({ data, outputSeq }) => {
+        terminal.write(data, () => this.bridge.acknowledgeOutput(session.sessionId, outputSeq));
+      });
       this.earlyOutput.delete(session.sessionId);
     }
   }
@@ -1031,12 +1041,13 @@ export class Workspace implements TerminalCallbacks {
     }
 
     const data = this.payloadString(event, 'data');
+    const outputSeq = this.payloadNumber(event, 'outputSeq');
     const terminal = this.terminals.get(event.sessionId);
     if (terminal) {
-      terminal.write(data);
+      terminal.write(data, () => this.bridge.acknowledgeOutput(event.sessionId!, outputSeq));
     } else {
       const pending = this.earlyOutput.get(event.sessionId) ?? [];
-      pending.push(data);
+      pending.push({ data, outputSeq });
       this.earlyOutput.set(event.sessionId, pending);
     }
   }

@@ -2,60 +2,49 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using KevinZonda.AgentUsageMonitor;
-using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Messaging;
-using KevinZonda.Terminal.Monitoring;
-using KevinZonda.Terminal.Terminal;
-using KevinZonda.Terminal.Usage;
 
 namespace KevinZonda.Terminal.Server;
 
-internal sealed class BrowserTerminalConnection
+internal interface IBrowserTerminalClient
+{
+    bool TryPost(string type, string? requestId = null, string? sessionId = null, object? payload = null);
+
+    void Supersede();
+}
+
+internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
 {
     private const int MaximumMessageBytes = 1024 * 1024;
+    private const long MaximumQueuedBytes = 32L * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly WebSocket _socket;
-    private readonly TerminalSessionManager _sessions;
-    private readonly AgentUsageStatusService _agentUsage;
-    private readonly SystemMetricsService _systemMetrics;
-    private readonly Channel<string> _outbound = Channel.CreateUnbounded<string>(
+    private readonly BrowserTerminalRuntimeRegistry _runtimes;
+    private readonly Channel<OutboundFrame> _outbound = Channel.CreateUnbounded<OutboundFrame>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
-    private readonly object _sessionEventLock = new();
-    private readonly HashSet<string> _announcedSessions = [];
-    private readonly Dictionary<string, StringBuilder> _pendingOutput = [];
-    private readonly Dictionary<string, TerminalExitStatus> _pendingExits = [];
-    private AppSettings _settings;
+    private CancellationTokenSource? _connectionLifetime;
+    private BrowserTerminalRuntime? _runtime;
+    private long _runtimeEpoch;
+    private long _queuedBytes;
+    private int _closed;
 
-    internal BrowserTerminalConnection(
-        WebSocket socket,
-        SettingsStore settingsStore,
-        ServerOptions options)
+    internal BrowserTerminalConnection(WebSocket socket, BrowserTerminalRuntimeRegistry runtimes)
     {
         _socket = socket;
-        _settings = settingsStore.Load();
-        _sessions = new TerminalSessionManager(_settings, options.StartingDirectory);
-        _agentUsage = new AgentUsageStatusService(_sessions, _settings);
-        _systemMetrics = new SystemMetricsService();
+        _runtimes = runtimes;
     }
 
     internal async Task RunAsync(CancellationToken cancellationToken)
     {
-        _sessions.OutputReceived += HandleOutput;
-        _sessions.SessionExited += HandleExit;
-        _agentUsage.StatusChanged += HandleAgentUsage;
-        _systemMetrics.StatusChanged += HandleSystemMetrics;
-        _sessions.Prewarm(80, 24);
-        _agentUsage.Start();
-        _systemMetrics.Start();
-
-        var sendTask = SendLoopAsync(cancellationToken);
+        using var connectionLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _connectionLifetime = connectionLifetime;
+        var sendTask = SendLoopAsync(connectionLifetime.Token);
         try
         {
-            await ReceiveLoopAsync(cancellationToken).ConfigureAwait(false);
+            await ReceiveLoopAsync(connectionLifetime.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (connectionLifetime.IsCancellationRequested)
         {
         }
         catch (WebSocketException)
@@ -63,17 +52,15 @@ internal sealed class BrowserTerminalConnection
         }
         finally
         {
-            _sessions.OutputReceived -= HandleOutput;
-            _sessions.SessionExited -= HandleExit;
-            _agentUsage.StatusChanged -= HandleAgentUsage;
-            _systemMetrics.StatusChanged -= HandleSystemMetrics;
-
-            await _agentUsage.DisposeAsync().ConfigureAwait(false);
-            await _systemMetrics.DisposeAsync().ConfigureAwait(false);
-            await _sessions.DisposeAsync().ConfigureAwait(false);
+            Interlocked.Exchange(ref _closed, 1);
+            connectionLifetime.Cancel();
             _outbound.Writer.TryComplete();
-            await sendTask.ConfigureAwait(false);
+            if (_runtime is not null)
+            {
+                _runtimes.Detach(_runtime, _runtimeEpoch);
+            }
 
+            await sendTask.ConfigureAwait(false);
             if (_socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
             {
                 try
@@ -90,14 +77,52 @@ internal sealed class BrowserTerminalConnection
         }
     }
 
+    public bool TryPost(
+        string type,
+        string? requestId = null,
+        string? sessionId = null,
+        object? payload = null)
+    {
+        if (Volatile.Read(ref _closed) != 0)
+        {
+            return false;
+        }
+
+        var json = JsonSerializer.Serialize(new
+        {
+            version = 1,
+            type,
+            requestId,
+            sessionId,
+            payload = payload ?? new { }
+        }, JsonOptions);
+        var byteCount = Encoding.UTF8.GetByteCount(json);
+        if (Interlocked.Add(ref _queuedBytes, byteCount) > MaximumQueuedBytes)
+        {
+            Interlocked.Add(ref _queuedBytes, -byteCount);
+            Supersede();
+            return false;
+        }
+
+        if (_outbound.Writer.TryWrite(new OutboundFrame(json, byteCount)))
+        {
+            return true;
+        }
+
+        Interlocked.Add(ref _queuedBytes, -byteCount);
+        return false;
+    }
+
+    public void Supersede() => _connectionLifetime?.Cancel();
+
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new byte[16 * 1024];
-        using var message = new MemoryStream();
+        using var messageBuffer = new MemoryStream();
 
         while (_socket.State == WebSocketState.Open)
         {
-            message.SetLength(0);
+            messageBuffer.SetLength(0);
             WebSocketReceiveResult result;
             do
             {
@@ -110,26 +135,40 @@ internal sealed class BrowserTerminalConnection
                 {
                     throw new InvalidDataException("Only text WebSocket messages are supported.");
                 }
-                if (message.Length + result.Count > MaximumMessageBytes)
+                if (messageBuffer.Length + result.Count > MaximumMessageBytes)
                 {
                     throw new InvalidDataException("The WebSocket message is too large.");
                 }
-                message.Write(buffer, 0, result.Count);
+                messageBuffer.Write(buffer, 0, result.Count);
             } while (!result.EndOfMessage);
 
-            BridgeMessage? bridgeMessage = null;
+            BridgeMessage? message = null;
             try
             {
-                bridgeMessage = JsonSerializer.Deserialize<BridgeMessage>(message.GetBuffer().AsSpan(0, (int)message.Length), JsonOptions);
-                if (bridgeMessage is null || bridgeMessage.Version != 1 || string.IsNullOrWhiteSpace(bridgeMessage.Type))
+                message = JsonSerializer.Deserialize<BridgeMessage>(
+                    messageBuffer.GetBuffer().AsSpan(0, (int)messageBuffer.Length),
+                    JsonOptions);
+                if (message is null || message.Version != 1 || string.IsNullOrWhiteSpace(message.Type))
                 {
                     throw new InvalidDataException("Unsupported bridge message.");
                 }
-                await HandleMessageAsync(bridgeMessage, cancellationToken).ConfigureAwait(false);
+
+                if (message.Type == "runtime.attach")
+                {
+                    AttachRuntime(message);
+                }
+                else if (_runtime is null)
+                {
+                    throw new InvalidDataException("Attach a browser runtime before sending terminal messages.");
+                }
+                else
+                {
+                    await _runtime.HandleMessageAsync(this, message, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                Post("session.error", bridgeMessage?.RequestId, bridgeMessage?.SessionId, new
+                TryPost("session.error", message?.RequestId, message?.SessionId, new
                 {
                     message = exception.Message
                 });
@@ -137,123 +176,61 @@ internal sealed class BrowserTerminalConnection
         }
     }
 
-    private async Task HandleMessageAsync(BridgeMessage message, CancellationToken cancellationToken)
+    private void AttachRuntime(BridgeMessage message)
     {
-        switch (message.Type)
+        if (_runtime is not null)
         {
-            case "app.ready":
-                Post("app.initialState", message.RequestId, payload: new
-                {
-                    application = "KevinZonda Terminal Server",
-                    version = typeof(BrowserTerminalConnection).Assembly.GetName().Version?.ToString(),
-                    settings = _settings,
-                    agentUsage = _agentUsage.Current,
-                    systemMetrics = _systemMetrics.Current
-                });
-                break;
-
-            case "session.create":
-                var session = await _sessions.CreateAsync(
-                    GetInt32(message.Payload, "cols", 80),
-                    GetInt32(message.Payload, "rows", 24)).ConfigureAwait(false);
-                lock (_sessionEventLock)
-                {
-                    Post("session.created", message.RequestId, session.Id, new
-                    {
-                        shellName = session.ShellName,
-                        processId = session.ProcessId
-                    });
-                    _announcedSessions.Add(session.Id);
-                    if (_pendingOutput.Remove(session.Id, out var pendingOutput) && pendingOutput.Length > 0)
-                    {
-                        Post("session.output", sessionId: session.Id, payload: new
-                        {
-                            data = pendingOutput.ToString()
-                        });
-                    }
-                    if (_pendingExits.Remove(session.Id, out var pendingExit))
-                    {
-                        PostExit(session.Id, pendingExit);
-                    }
-                }
-                break;
-
-            case "session.input":
-                await _sessions.WriteAsync(
-                    RequireSessionId(message),
-                    GetString(message.Payload, "data")).ConfigureAwait(false);
-                break;
-
-            case "session.binaryInput":
-                await _sessions.WriteAsync(
-                    RequireSessionId(message),
-                    Convert.FromBase64String(GetString(message.Payload, "data"))).ConfigureAwait(false);
-                break;
-
-            case "session.resize":
-                _sessions.Resize(
-                    RequireSessionId(message),
-                    GetInt32(message.Payload, "cols", 80),
-                    GetInt32(message.Payload, "rows", 24));
-                break;
-
-            case "session.close":
-                var sessionId = RequireSessionId(message);
-                lock (_sessionEventLock)
-                {
-                    _announcedSessions.Remove(sessionId);
-                    _pendingOutput.Remove(sessionId);
-                    _pendingExits.Remove(sessionId);
-                }
-                await _sessions.CloseAsync(sessionId).ConfigureAwait(false);
-                break;
-
-            case "settings.fontSize":
-                // Browser clients persist font size in localStorage. Keep this
-                // legacy request connection-local so older cached frontends can
-                // no longer overwrite the server host's desktop configuration.
-                _settings = AppSettings.Normalize(
-                    _settings with
-                    {
-                        Font = _settings.Font with
-                        {
-                            Size = GetDouble(message.Payload, "size", AppSettings.DefaultFontSize)
-                        }
-                    });
-                Post("settings.saved", message.RequestId, payload: new { settings = _settings });
-                break;
-
-            case "agentUsage.refresh":
-                var provider = GetString(message.Payload, "provider") switch
-                {
-                    "codex" => UsageProvider.Codex,
-                    "kimi" => UsageProvider.KimiCode,
-                    _ => throw new InvalidDataException("Unsupported usage provider.")
-                };
-                Post("agentUsage.refreshResult", message.RequestId, payload: new
-                {
-                    started = _agentUsage.RequestRefresh(provider)
-                });
-                break;
-
-            default:
-                throw new InvalidDataException($"Unknown bridge message type '{message.Type}'.");
+            throw new InvalidDataException("This WebSocket is already attached to a browser runtime.");
         }
+
+        var runtimeId = GetString(message.Payload, "runtimeId");
+        if (string.IsNullOrWhiteSpace(runtimeId) || runtimeId.Length > 128)
+        {
+            throw new InvalidDataException("The runtime ID is missing or invalid.");
+        }
+
+        var outputAcks = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (message.Payload.ValueKind == JsonValueKind.Object &&
+            message.Payload.TryGetProperty("sessions", out var sessions) &&
+            sessions.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var session in sessions.EnumerateArray())
+            {
+                var sessionId = GetString(session, "sessionId");
+                var outputSeq = GetInt64(session, "lastAppliedOutputSeq", 0);
+                if (!string.IsNullOrWhiteSpace(sessionId) && outputSeq >= 0)
+                {
+                    outputAcks[sessionId] = outputSeq;
+                }
+            }
+        }
+
+        var lease = _runtimes.Attach(runtimeId, this, message.RequestId, outputAcks);
+        _runtime = lease.Runtime;
+        _runtimeEpoch = lease.Epoch;
     }
 
     private async Task SendLoopAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (var json in _outbound.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            await foreach (var frame in _outbound.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 if (_socket.State != WebSocketState.Open)
                 {
                     break;
                 }
-                var bytes = Encoding.UTF8.GetBytes(json);
-                await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken)
-                    .ConfigureAwait(false);
+
+                try
+                {
+                    var bytes = Encoding.UTF8.GetBytes(frame.Json);
+                    await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    Interlocked.Add(ref _queuedBytes, -frame.ByteCount);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -261,80 +238,8 @@ internal sealed class BrowserTerminalConnection
         }
         catch (WebSocketException)
         {
+            _connectionLifetime?.Cancel();
         }
-    }
-
-    private void HandleOutput(string sessionId, string data)
-    {
-        lock (_sessionEventLock)
-        {
-            if (_announcedSessions.Contains(sessionId))
-            {
-                Post("session.output", sessionId: sessionId, payload: new { data });
-                return;
-            }
-
-            if (!_pendingOutput.TryGetValue(sessionId, out var output))
-            {
-                output = new StringBuilder();
-                _pendingOutput.Add(sessionId, output);
-            }
-            output.Append(data);
-        }
-    }
-
-    private void HandleExit(string sessionId, TerminalExitStatus status)
-    {
-        lock (_sessionEventLock)
-        {
-            if (_announcedSessions.Contains(sessionId))
-            {
-                PostExit(sessionId, status);
-            }
-            else
-            {
-                _pendingExits[sessionId] = status;
-            }
-        }
-    }
-
-    private void PostExit(string sessionId, TerminalExitStatus status) =>
-        Post("session.exited", sessionId: sessionId, payload: new
-        {
-            exitCode = status.ExitCode,
-            failure = status.Failure
-        });
-
-    private void HandleAgentUsage(AgentUsageStatus status) =>
-        Post("agentUsage.changed", payload: new { agentUsage = status });
-
-    private void HandleSystemMetrics(SystemMetricsStatus status) =>
-        Post("systemMetrics.changed", payload: new { systemMetrics = status });
-
-    private void Post(
-        string type,
-        string? requestId = null,
-        string? sessionId = null,
-        object? payload = null)
-    {
-        var json = JsonSerializer.Serialize(new
-        {
-            version = 1,
-            type,
-            requestId,
-            sessionId,
-            payload = payload ?? new { }
-        }, JsonOptions);
-        _outbound.Writer.TryWrite(json);
-    }
-
-    private static string RequireSessionId(BridgeMessage message)
-    {
-        if (string.IsNullOrWhiteSpace(message.SessionId))
-        {
-            throw new InvalidDataException("The message is missing a session ID.");
-        }
-        return message.SessionId;
     }
 
     private static string GetString(JsonElement payload, string propertyName) =>
@@ -344,17 +249,12 @@ internal sealed class BrowserTerminalConnection
             ? property.GetString() ?? string.Empty
             : string.Empty;
 
-    private static int GetInt32(JsonElement payload, string propertyName, int defaultValue) =>
+    private static long GetInt64(JsonElement payload, string propertyName, long defaultValue) =>
         payload.ValueKind == JsonValueKind.Object &&
         payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetInt32(out var value)
+        property.TryGetInt64(out var value)
             ? value
             : defaultValue;
 
-    private static double GetDouble(JsonElement payload, string propertyName, double defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetDouble(out var value)
-            ? value
-            : defaultValue;
+    private sealed record OutboundFrame(string Json, int ByteCount);
 }

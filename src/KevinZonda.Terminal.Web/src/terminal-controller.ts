@@ -219,8 +219,8 @@ export class TerminalController {
     context?.getExtension('WEBGL_lose_context')?.loseContext();
   }
 
-  public write(data: string): void {
-    this.terminal.write(data);
+  public write(data: string, callback?: () => void): void {
+    this.terminal.write(data, callback);
   }
 
   public markExited(exitCode: number, failure?: string): void {
