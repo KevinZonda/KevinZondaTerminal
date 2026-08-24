@@ -75,40 +75,79 @@ interface CheckpointRecord extends TerminalCheckpoint {
   runtimeId: string;
 }
 
+interface RuntimeUrlState {
+  runtimeId?: string;
+  sessionId?: string;
+}
+
 export class BrowserResumeStore {
   private static readonly STORAGE_KEY = 'kterm.serverResume.v1';
   private static readonly DATABASE_NAME = 'kterm-resume';
-  private static readonly DATABASE_VERSION = 1;
+  private static readonly DATABASE_VERSION = 2;
   private static readonly CHECKPOINT_STORE = 'terminal-checkpoints';
+  private static readonly MANIFEST_STORE = 'runtime-manifests';
 
-  private readonly database: Promise<IDBDatabase>;
-  private manifest: ResumeManifest;
+  private manifestWriteQueue = Promise.resolve();
+  private active = true;
 
-  public constructor() {
-    const previous = this.readManifest();
+  private constructor(
+    private readonly database: IDBDatabase,
+    private manifest: ResumeManifest,
+    public readonly requestedSessionId?: string
+  ) {}
+
+  public static async create(): Promise<BrowserResumeStore> {
+    const database = await BrowserResumeStore.openDatabase();
+    const urlState = BrowserResumeStore.readUrlState();
+    const previous = BrowserResumeStore.readSessionManifest();
     const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    const resumesPreviousPage = navigation?.type === 'reload' && previous !== undefined;
-    this.manifest = resumesPreviousPage
-      ? previous
-      : {
-          version: 1,
-          runtimeId: createId(),
-          activeWorkspaceId: undefined,
-          nextWorkspaceNumber: 1,
-          workspaces: [],
-          sessions: [],
-          updatedAt: new Date().toISOString()
-        };
-    this.database = this.openDatabase();
-    this.writeManifest();
+    const reloadRuntimeId = navigation?.type === 'reload' ? previous?.runtimeId : undefined;
+    const runtimeId = urlState.runtimeId ?? reloadRuntimeId ?? createId();
+    const databaseManifest = await BrowserResumeStore.readDatabaseManifest(database, runtimeId);
+    const sessionManifest = previous?.runtimeId === runtimeId ? previous : undefined;
+    const manifest = BrowserResumeStore.newestManifest(databaseManifest, sessionManifest)
+      ?? BrowserResumeStore.createEmptyManifest(runtimeId);
+    const store = new BrowserResumeStore(database, manifest, urlState.sessionId);
+    await store.writeManifest();
+    store.setFocusedSession(urlState.sessionId);
+    return store;
   }
 
   public get runtimeId(): string {
     return this.manifest.runtimeId;
   }
 
+  public get linkedRuntimeId(): string | undefined {
+    return BrowserResumeStore.readUrlState().runtimeId;
+  }
+
+  public get linkedSessionId(): string | undefined {
+    return BrowserResumeStore.readUrlState().sessionId;
+  }
+
   public get isResuming(): boolean {
     return this.manifest.workspaces.length > 0 && this.manifest.sessions.length > 0;
+  }
+
+  public deactivate(): void {
+    this.active = false;
+  }
+
+  public setFocusedSession(sessionId?: string): void {
+    if (!this.active) {
+      return;
+    }
+    const parameters = new URLSearchParams();
+    parameters.set('runtime', this.runtimeId);
+    if (sessionId) {
+      parameters.set('session', sessionId);
+    }
+    const hash = parameters.toString();
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${window.location.search}#${hash}`
+    );
   }
 
   public getWorkspaceSnapshot(): ResumeWorkspaceSnapshot {
@@ -124,10 +163,13 @@ export class BrowserResumeStore {
   }
 
   public saveWorkspace(snapshot: ResumeWorkspaceSnapshot): void {
+    if (!this.active) {
+      return;
+    }
     this.manifest.activeWorkspaceId = snapshot.activeWorkspaceId;
     this.manifest.nextWorkspaceNumber = snapshot.nextWorkspaceNumber;
     this.manifest.workspaces = structuredClone(snapshot.workspaces);
-    this.writeManifest();
+    void this.writeManifest();
   }
 
   public registerSession(
@@ -137,6 +179,9 @@ export class BrowserResumeStore {
     cols: number,
     rows: number
   ): void {
+    if (!this.active) {
+      return;
+    }
     const existing = this.findSession(sessionId);
     if (existing) {
       existing.shellName = shellName;
@@ -155,17 +200,20 @@ export class BrowserResumeStore {
         pendingInputs: []
       });
     }
-    this.writeManifest();
+    void this.writeManifest();
   }
 
   public updateResize(sessionId: string, cols: number, rows: number): void {
+    if (!this.active) {
+      return;
+    }
     const session = this.findSession(sessionId);
     if (!session) {
       return;
     }
     session.cols = cols;
     session.rows = rows;
-    this.writeManifest();
+    void this.writeManifest();
   }
 
   public saveInputState(
@@ -173,29 +221,38 @@ export class BrowserResumeStore {
     nextInputSeq: number,
     pendingInputs: ResumeInputRecord[]
   ): void {
+    if (!this.active) {
+      return;
+    }
     const session = this.findSession(sessionId);
     if (!session) {
       return;
     }
     session.nextInputSeq = nextInputSeq;
     session.pendingInputs = structuredClone(pendingInputs);
-    this.writeManifest();
+    void this.writeManifest();
   }
 
   public markSessionClosing(sessionId: string, operationId: string): void {
+    if (!this.active) {
+      return;
+    }
     const session = this.findSession(sessionId);
     if (!session) {
       return;
     }
     session.pendingCloseOperationId = operationId;
-    this.writeManifest();
+    void this.writeManifest();
   }
 
   public completeSession(sessionId: string): void {
+    if (!this.active) {
+      return;
+    }
     const index = this.manifest.sessions.findIndex(session => session.sessionId === sessionId);
     if (index >= 0) {
       this.manifest.sessions.splice(index, 1);
-      this.writeManifest();
+      void this.writeManifest();
     }
     void this.deleteCheckpoint(sessionId);
   }
@@ -206,7 +263,7 @@ export class BrowserResumeStore {
       return undefined;
     }
 
-    const database = await this.database;
+    const database = this.database;
     const record = await new Promise<CheckpointRecord | undefined>((resolve, reject) => {
       const request = database
         .transaction(BrowserResumeStore.CHECKPOINT_STORE, 'readonly')
@@ -231,6 +288,9 @@ export class BrowserResumeStore {
   }
 
   public async saveCheckpoint(checkpoint: TerminalCheckpoint): Promise<void> {
+    if (!this.active) {
+      return;
+    }
     const session = this.findSession(checkpoint.sessionId);
     if (!session || checkpoint.outputSeq <= session.checkpointOutputSeq) {
       return;
@@ -241,7 +301,7 @@ export class BrowserResumeStore {
       key: this.checkpointKey(checkpoint.sessionId),
       runtimeId: this.runtimeId
     };
-    const database = await this.database;
+    const database = this.database;
     const committedRecord = await new Promise<CheckpointRecord>((resolve, reject) => {
       const transaction = database.transaction(BrowserResumeStore.CHECKPOINT_STORE, 'readwrite');
       const store = transaction.objectStore(BrowserResumeStore.CHECKPOINT_STORE);
@@ -272,12 +332,12 @@ export class BrowserResumeStore {
     current.checkpointOutputSeq = committedRecord.outputSeq;
     current.cols = committedRecord.cols;
     current.rows = committedRecord.rows;
-    this.writeManifest(true);
+    await this.writeManifest(true);
   }
 
   private async deleteCheckpoint(sessionId: string): Promise<void> {
     try {
-      const database = await this.database;
+      const database = this.database;
       await new Promise<void>((resolve, reject) => {
         const transaction = database.transaction(BrowserResumeStore.CHECKPOINT_STORE, 'readwrite');
         transaction.objectStore(BrowserResumeStore.CHECKPOINT_STORE).delete(this.checkpointKey(sessionId));
@@ -298,7 +358,29 @@ export class BrowserResumeStore {
     return this.manifest.sessions.find(session => session.sessionId === sessionId);
   }
 
-  private readManifest(): ResumeManifest | undefined {
+  private static readUrlState(): RuntimeUrlState {
+    const hash = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const hashParameters = new URLSearchParams(hash);
+    const queryParameters = new URLSearchParams(window.location.search);
+    const runtimeId = BrowserResumeStore.validId(
+      hashParameters.get('runtime') ?? queryParameters.get('runtime')
+    );
+    const sessionId = BrowserResumeStore.validId(
+      hashParameters.get('session') ?? queryParameters.get('session')
+    );
+    return { runtimeId, sessionId };
+  }
+
+  private static validId(value: string | null): string | undefined {
+    const candidate = value?.trim();
+    return candidate && candidate.length <= 128 && !/\s/.test(candidate)
+      ? candidate
+      : undefined;
+  }
+
+  private static readSessionManifest(): ResumeManifest | undefined {
     try {
       const raw = window.sessionStorage.getItem(BrowserResumeStore.STORAGE_KEY);
       if (!raw) {
@@ -316,7 +398,69 @@ export class BrowserResumeStore {
     }
   }
 
-  private writeManifest(throwOnFailure = false): void {
+  private static async readDatabaseManifest(
+    database: IDBDatabase,
+    runtimeId: string
+  ): Promise<ResumeManifest | undefined> {
+    try {
+      const manifest = await new Promise<ResumeManifest | undefined>((resolve, reject) => {
+        const request = database
+          .transaction(BrowserResumeStore.MANIFEST_STORE, 'readonly')
+          .objectStore(BrowserResumeStore.MANIFEST_STORE)
+          .get(runtimeId);
+        request.onsuccess = () => resolve(request.result as ResumeManifest | undefined);
+        request.onerror = () => reject(request.error ?? new Error('Unable to read the runtime manifest.'));
+      });
+      return BrowserResumeStore.isManifest(manifest) && manifest.runtimeId === runtimeId
+        ? manifest
+        : undefined;
+    } catch (error) {
+      console.warn('Unable to read the shared KTerm runtime manifest.', error);
+      return undefined;
+    }
+  }
+
+  private static newestManifest(
+    first: ResumeManifest | undefined,
+    second: ResumeManifest | undefined
+  ): ResumeManifest | undefined {
+    if (!first) {
+      return second ? structuredClone(second) : undefined;
+    }
+    if (!second) {
+      return structuredClone(first);
+    }
+    return structuredClone(
+      Date.parse(second.updatedAt) > Date.parse(first.updatedAt) ? second : first
+    );
+  }
+
+  private static createEmptyManifest(runtimeId: string): ResumeManifest {
+    return {
+      version: 1,
+      runtimeId,
+      activeWorkspaceId: undefined,
+      nextWorkspaceNumber: 1,
+      workspaces: [],
+      sessions: [],
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  private static isManifest(value: unknown): value is ResumeManifest {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+    const candidate = value as Partial<ResumeManifest>;
+    return candidate.version === 1 && typeof candidate.runtimeId === 'string' &&
+      Array.isArray(candidate.workspaces) && Array.isArray(candidate.sessions) &&
+      typeof candidate.nextWorkspaceNumber === 'number' && typeof candidate.updatedAt === 'string';
+  }
+
+  private writeManifest(throwOnFailure = false): Promise<void> {
+    if (!this.active) {
+      return Promise.resolve();
+    }
     this.manifest.updatedAt = new Date().toISOString();
     try {
       window.sessionStorage.setItem(
@@ -324,14 +468,31 @@ export class BrowserResumeStore {
         JSON.stringify(this.manifest)
       );
     } catch (error) {
-      if (throwOnFailure) {
-        throw error;
-      }
       console.warn('Unable to persist the KTerm page resume manifest.', error);
     }
+
+    const snapshot = structuredClone(this.manifest);
+    const operation = this.manifestWriteQueue.then(async () => {
+      if (!this.active) {
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const transaction = this.database.transaction(BrowserResumeStore.MANIFEST_STORE, 'readwrite');
+        transaction.objectStore(BrowserResumeStore.MANIFEST_STORE).put(snapshot);
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error ?? new Error('Unable to save the runtime manifest.'));
+        transaction.onerror = () => reject(transaction.error ?? new Error('Unable to save the runtime manifest.'));
+      });
+    });
+    this.manifestWriteQueue = operation.catch(() => undefined);
+    return throwOnFailure
+      ? operation
+      : operation.catch(error => {
+          console.warn('Unable to persist the shared KTerm runtime manifest.', error);
+        });
   }
 
-  private openDatabase(): Promise<IDBDatabase> {
+  private static openDatabase(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const request = window.indexedDB.open(
         BrowserResumeStore.DATABASE_NAME,
@@ -342,8 +503,14 @@ export class BrowserResumeStore {
         if (!database.objectStoreNames.contains(BrowserResumeStore.CHECKPOINT_STORE)) {
           database.createObjectStore(BrowserResumeStore.CHECKPOINT_STORE, { keyPath: 'key' });
         }
+        if (!database.objectStoreNames.contains(BrowserResumeStore.MANIFEST_STORE)) {
+          database.createObjectStore(BrowserResumeStore.MANIFEST_STORE, { keyPath: 'runtimeId' });
+        }
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      };
       request.onerror = () => reject(request.error ?? new Error('Unable to open terminal checkpoint storage.'));
     });
   }

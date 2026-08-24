@@ -109,7 +109,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
 
         if (previousClient is not null && !ReferenceEquals(previousClient, client))
         {
-            previousClient.Supersede();
+            previousClient.Supersede(replaced: true);
         }
         return epoch;
     }

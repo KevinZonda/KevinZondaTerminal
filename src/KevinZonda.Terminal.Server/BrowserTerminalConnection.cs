@@ -10,7 +10,7 @@ internal interface IBrowserTerminalClient
 {
     bool TryPost(string type, string? requestId = null, string? sessionId = null, object? payload = null);
 
-    void Supersede();
+    void Supersede(bool replaced = false);
 }
 
 internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
@@ -28,6 +28,8 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
     private long _runtimeEpoch;
     private long _queuedBytes;
     private int _closed;
+    private int _superseded;
+    private int _replacementClose;
 
     internal BrowserTerminalConnection(WebSocket socket, BrowserTerminalRuntimeRegistry runtimes)
     {
@@ -65,9 +67,10 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             {
                 try
                 {
+                    var replaced = Volatile.Read(ref _replacementClose) != 0;
                     await _socket.CloseOutputAsync(
-                        WebSocketCloseStatus.NormalClosure,
-                        "KTerm connection closed.",
+                        replaced ? (WebSocketCloseStatus)4001 : WebSocketCloseStatus.NormalClosure,
+                        replaced ? "KTerm runtime opened in another page." : "KTerm connection closed.",
                         CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (WebSocketException)
@@ -81,9 +84,45 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
         string type,
         string? requestId = null,
         string? sessionId = null,
-        object? payload = null)
+        object? payload = null) =>
+        TryPostCore(type, requestId, sessionId, payload, closeAfterSend: false, allowSuperseded: false);
+
+    public void Supersede(bool replaced = false)
     {
-        if (Volatile.Read(ref _closed) != 0)
+        if (Interlocked.Exchange(ref _superseded, 1) != 0)
+        {
+            return;
+        }
+
+        if (!replaced)
+        {
+            _connectionLifetime?.Cancel();
+            return;
+        }
+
+        Volatile.Write(ref _replacementClose, 1);
+        if (!TryPostCore(
+                "runtime.replaced",
+                requestId: null,
+                sessionId: null,
+                payload: new { },
+                closeAfterSend: true,
+                allowSuperseded: true))
+        {
+            _connectionLifetime?.Cancel();
+        }
+    }
+
+    private bool TryPostCore(
+        string type,
+        string? requestId,
+        string? sessionId,
+        object? payload,
+        bool closeAfterSend,
+        bool allowSuperseded)
+    {
+        if (Volatile.Read(ref _closed) != 0 ||
+            (!allowSuperseded && Volatile.Read(ref _superseded) != 0))
         {
             return false;
         }
@@ -100,11 +139,11 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
         if (Interlocked.Add(ref _queuedBytes, byteCount) > MaximumQueuedBytes)
         {
             Interlocked.Add(ref _queuedBytes, -byteCount);
-            Supersede();
+            _connectionLifetime?.Cancel();
             return false;
         }
 
-        if (_outbound.Writer.TryWrite(new OutboundFrame(json, byteCount)))
+        if (_outbound.Writer.TryWrite(new OutboundFrame(json, byteCount, closeAfterSend)))
         {
             return true;
         }
@@ -112,8 +151,6 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
         Interlocked.Add(ref _queuedBytes, -byteCount);
         return false;
     }
-
-    public void Supersede() => _connectionLifetime?.Cancel();
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
@@ -229,6 +266,11 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
                     var bytes = Encoding.UTF8.GetBytes(frame.Json);
                     await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken)
                         .ConfigureAwait(false);
+                    if (frame.CloseAfterSend)
+                    {
+                        _connectionLifetime?.Cancel();
+                        break;
+                    }
                 }
                 finally
                 {
@@ -259,7 +301,7 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             ? value
             : defaultValue;
 
-    private sealed record OutboundFrame(string Json, int ByteCount);
+    private sealed record OutboundFrame(string Json, int ByteCount, bool CloseAfterSend);
 }
 
 internal sealed record BrowserSessionResumeState(long LastAppliedOutputSeq, long CheckpointOutputSeq);

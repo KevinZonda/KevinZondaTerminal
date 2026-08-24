@@ -177,6 +177,7 @@ export class NativeBridge {
   private reconnectAttempt = 0;
   private attached = false;
   private everConnected = false;
+  private replaced = false;
   private currentSettings: AppSettings = structuredClone(DEFAULT_SETTINGS);
   private serverFontSize = DEFAULT_SETTINGS.font.size;
 
@@ -583,7 +584,7 @@ export class NativeBridge {
   };
 
   private connectSocket(): void {
-    if (this.webView || this.socket?.readyState === WebSocket.CONNECTING ||
+    if (this.webView || this.replaced || this.socket?.readyState === WebSocket.CONNECTING ||
         this.socket?.readyState === WebSocket.OPEN) {
       return;
     }
@@ -622,7 +623,7 @@ export class NativeBridge {
         socket.close();
       }
     });
-    socket.addEventListener('close', () => this.handleSocketClosed(socket));
+    socket.addEventListener('close', event => this.handleSocketClosed(socket, event));
   }
 
   private acceptMessage(value: unknown): void {
@@ -631,6 +632,9 @@ export class NativeBridge {
     }
 
     const event = value;
+    if (!this.webView && event.type === 'runtime.replaced') {
+      this.handleRuntimeReplaced();
+    }
     if (!this.webView && event.type === 'runtime.attached') {
       this.attached = true;
       this.reconnectAttempt = 0;
@@ -705,13 +709,19 @@ export class NativeBridge {
     this.handlers.get(event.type)?.forEach(handler => handler(event));
   }
 
-  private handleSocketClosed(socket: WebSocket): void {
+  private handleSocketClosed(socket: WebSocket, event: CloseEvent): void {
     if (this.socket !== socket) {
       return;
     }
 
     this.socket = undefined;
     this.attached = false;
+    if (event.code === 4001) {
+      this.handleRuntimeReplaced();
+    }
+    if (this.replaced) {
+      return;
+    }
     for (const [sessionId, acknowledged] of this.outputAcks) {
       this.receivedOutputSequences.set(sessionId, acknowledged);
     }
@@ -729,7 +739,7 @@ export class NativeBridge {
   }
 
   private reconnectNow(): void {
-    if (this.webView || this.attached) {
+    if (this.webView || this.attached || this.replaced) {
       return;
     }
     window.clearTimeout(this.reconnectTimer);
@@ -795,7 +805,7 @@ export class NativeBridge {
           typeof session.processId !== 'number') {
         continue;
       }
-      this.attachedSessions.set(session.sessionId, {
+      const attachedSession: AttachedSession = {
         sessionId: session.sessionId,
         shellName: session.shellName,
         processId: session.processId,
@@ -807,8 +817,31 @@ export class NativeBridge {
         exited: session.exited === true,
         exitCode: this.finiteNumber(session.exitCode) ?? 0,
         failure: typeof session.failure === 'string' ? session.failure : undefined
-      });
+      };
+      this.attachedSessions.set(session.sessionId, attachedSession);
+      this.resumeStore?.registerSession(
+        attachedSession.sessionId,
+        attachedSession.shellName,
+        attachedSession.processId,
+        attachedSession.cols,
+        attachedSession.rows
+      );
     }
+  }
+
+  private handleRuntimeReplaced(): void {
+    if (this.replaced) {
+      return;
+    }
+    this.replaced = true;
+    this.attached = false;
+    window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = undefined;
+    this.resumeStore?.deactivate();
+    const error = new Error('This terminal runtime was opened in another page.');
+    this.pending.forEach(request => request.reject(error));
+    this.pending.clear();
+    this.emitConnectionChanged('replaced');
   }
 
   private persistInputState(sessionId: string, state: PendingInputState): void {
@@ -873,7 +906,10 @@ export class NativeBridge {
     }
   }
 
-  private emitConnectionChanged(state: 'connected' | 'reconnecting', retryInMs?: number): void {
+  private emitConnectionChanged(
+    state: 'connected' | 'reconnecting' | 'replaced',
+    retryInMs?: number
+  ): void {
     this.handlers.get('server.connectionChanged')?.forEach(handler => handler({
       version: 1,
       type: 'server.connectionChanged',
@@ -975,7 +1011,7 @@ export class NativeBridge {
   }
 
   private sendBrowserEvent(event: BridgeEvent): boolean {
-    if (!this.attached || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (this.replaced || !this.attached || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
       return false;
     }
     this.socket.send(JSON.stringify(event));

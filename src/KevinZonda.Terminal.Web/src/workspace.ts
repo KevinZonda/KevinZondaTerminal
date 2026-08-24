@@ -15,6 +15,7 @@ import { createId } from './id';
 import type {
   BrowserResumeStore,
   ResumeLayoutNode,
+  ResumeWorkspaceSnapshot,
   ResumeWorkspaceRecord,
   TerminalCheckpoint
 } from './resume-store';
@@ -185,6 +186,8 @@ export class Workspace implements TerminalCallbacks {
       const state = this.payloadString(event, 'state');
       if (state === 'reconnecting') {
         this.setStatus('Connection lost. Reconnecting…');
+      } else if (state === 'replaced') {
+        this.setStatus('This terminal is open in another page. Reload to take control.', true);
       } else if (state === 'connected' && event.payload.reconnected === true) {
         this.setStatus('');
       }
@@ -213,6 +216,7 @@ export class Workspace implements TerminalCallbacks {
     window.visualViewport?.addEventListener('scroll', this.updateMobileInputToolbar);
     this.coarsePointer.addEventListener('change', this.updateMobileInputToolbar);
     window.addEventListener('pagehide', this.handlePageHide);
+    window.addEventListener('hashchange', this.handleRuntimeUrlChange);
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
     this.updateMobileInputToolbar();
   }
@@ -223,7 +227,9 @@ export class Workspace implements TerminalCallbacks {
     this.applySettings(initialState.settings);
     this.renderSystemMetrics(initialState.systemMetrics);
     this.renderAgentUsage(initialState.agentUsage);
-    const restored = this.resumeStore?.isResuming === true && await this.restoreWorkspaceState();
+    const restored = this.resumeStore !== undefined &&
+      (this.resumeStore.isResuming || this.bridge.getAttachedSessions().length > 0) &&
+      await this.restoreWorkspaceState();
     if (!restored) {
       await this.createWorkspace();
     }
@@ -237,9 +243,14 @@ export class Workspace implements TerminalCallbacks {
 
     this.restoringResumeState = true;
     try {
-      const snapshot = this.resumeStore.getWorkspaceSnapshot();
+      const snapshot: ResumeWorkspaceSnapshot = this.resumeStore.getWorkspaceSnapshot();
       const attachedSessions = new Map(
         this.bridge.getAttachedSessions().map(session => [session.sessionId, session])
+      );
+      const closingSessions = new Set(
+        this.resumeStore.getSessions()
+          .filter(session => session.pendingCloseOperationId)
+          .map(session => session.sessionId)
       );
       const referencedSessions = new Set<string>();
       const restoredWorkspaces: WorkspaceState[] = [];
@@ -307,27 +318,73 @@ export class Workspace implements TerminalCallbacks {
         }
       }
 
+      const orphanSessions = [...attachedSessions.values()].filter(
+        session => !referencedSessions.has(session.sessionId) &&
+          !closingSessions.has(session.sessionId)
+      );
+      if (orphanSessions.length > 0) {
+        const paneId = createId();
+        const requestedSessionId = this.resumeStore.requestedSessionId;
+        const activeSessionId = orphanSessions.some(
+          session => session.sessionId === requestedSessionId
+        )
+          ? requestedSessionId!
+          : orphanSessions[0]!.sessionId;
+        const pane: PaneState = {
+          id: paneId,
+          tabs: orphanSessions.map(session => ({
+            sessionId: session.sessionId,
+            title: session.shellName,
+            processInfo: `${session.shellName} · PID ${session.processId}`
+          })),
+          activeSessionId
+        };
+        restoredWorkspaces.push({
+          id: createId(),
+          name: restoredWorkspaces.length === 0 ? 'Workspace 1' : 'Recovered',
+          panes: new Map([[paneId, pane]]),
+          root: { type: 'pane', paneId },
+          focusedPaneId: paneId
+        });
+        orphanSessions.forEach(session => referencedSessions.add(session.sessionId));
+      }
+
       if (restoredWorkspaces.length === 0) {
-        for (const session of attachedSessions.values()) {
-          this.bridge.closeSession(session.sessionId);
-        }
         return false;
       }
 
       this.workspaces.push(...restoredWorkspaces);
-      this.nextWorkspaceNumber = Math.max(1, snapshot.nextWorkspaceNumber);
-      this.activeWorkspaceId = restoredWorkspaces.some(
+      this.nextWorkspaceNumber = Math.max(
+        restoredWorkspaces.length + 1,
+        snapshot.nextWorkspaceNumber
+      );
+      let preferredWorkspaceId = restoredWorkspaces.some(
         workspace => workspace.id === snapshot.activeWorkspaceId
       )
         ? snapshot.activeWorkspaceId
         : restoredWorkspaces[0]!.id;
+      const requestedSessionId = this.resumeStore.requestedSessionId;
+      if (requestedSessionId) {
+        for (const workspace of restoredWorkspaces) {
+          for (const pane of workspace.panes.values()) {
+            if (!pane.tabs.some(tab => tab.sessionId === requestedSessionId)) {
+              continue;
+            }
+            pane.activeSessionId = requestedSessionId;
+            workspace.focusedPaneId = pane.id;
+            preferredWorkspaceId = workspace.id;
+          }
+        }
+      }
+      this.activeWorkspaceId = preferredWorkspaceId;
 
       for (const sessionId of referencedSessions) {
         const session = attachedSessions.get(sessionId)!;
         await this.restoreTerminal(session);
       }
       for (const session of attachedSessions.values()) {
-        if (!referencedSessions.has(session.sessionId)) {
+        if (!referencedSessions.has(session.sessionId) &&
+            !closingSessions.has(session.sessionId)) {
           this.bridge.closeSession(session.sessionId);
         }
       }
@@ -520,6 +577,36 @@ export class Workspace implements TerminalCallbacks {
     }
   };
 
+  private readonly handleRuntimeUrlChange = (): void => {
+    if (!this.resumeStore) {
+      return;
+    }
+    const linkedRuntimeId = this.resumeStore.linkedRuntimeId;
+    if (!linkedRuntimeId) {
+      this.resumeStore.setFocusedSession(this.focusedPane?.activeSessionId);
+      return;
+    }
+    if (linkedRuntimeId !== this.resumeStore.runtimeId) {
+      window.location.reload();
+      return;
+    }
+
+    const sessionId = this.resumeStore.linkedSessionId;
+    if (!sessionId) {
+      return;
+    }
+    const match = this.findWorkspacePaneBySession(sessionId);
+    if (!match) {
+      return;
+    }
+    match.pane.activeSessionId = sessionId;
+    match.workspace.focusedPaneId = match.pane.id;
+    this.activeWorkspaceId = match.workspace.id;
+    this.renderSidebar();
+    this.render();
+    this.focusSession(sessionId);
+  };
+
   private checkpointAllTerminals(): void {
     this.terminals.forEach(terminal => {
       void terminal.checkpointNow().catch(error => {
@@ -553,6 +640,7 @@ export class Workspace implements TerminalCallbacks {
       nextWorkspaceNumber: this.nextWorkspaceNumber,
       workspaces
     });
+    this.resumeStore.setFocusedSession(this.focusedPane?.activeSessionId);
   }
 
   private readonly handleKeyboard = (event: KeyboardEvent): void => {

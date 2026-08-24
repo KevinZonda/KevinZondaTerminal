@@ -107,11 +107,7 @@ await withTimeout((async () => {
   send(first.socket, 'session.outputAck', { outputSeq: checkpointOutputSeq }, sessionId);
   send(first.socket, 'session.checkpointAck', { outputSeq: checkpointOutputSeq }, sessionId);
 
-  first.socket.close();
-  stage = 'closing first socket';
-  await new Promise(resolve => first.socket.addEventListener('close', resolve, { once: true }));
-
-  stage = 'attaching second socket';
+  stage = 'taking over the runtime with a second socket';
   const second = await connect([{
     sessionId,
     lastAppliedOutputSeq: checkpointOutputSeq,
@@ -124,6 +120,18 @@ await withTimeout((async () => {
   if (resumed.checkpointOutputSeq !== checkpointOutputSeq) {
     throw new Error(`Reconnect did not retain checkpoint ${checkpointOutputSeq}.`);
   }
+
+  stage = 'notifying the replaced socket';
+  do {
+    message = await first.nextMessage();
+  } while (message.type !== 'runtime.replaced');
+  await new Promise(resolve => {
+    if (first.socket.readyState === WebSocket.CLOSED) {
+      resolve();
+      return;
+    }
+    first.socket.addEventListener('close', resolve, { once: true });
+  });
 
   send(second.socket, 'session.input', {
     data: 'echo KTERM_AFTER_RECONNECT\r',
@@ -186,4 +194,4 @@ await withTimeout((async () => {
   third.socket.close();
 })(), () => `Timed out testing resumable kterm-server Shell I/O (stage: ${stage}).`);
 
-console.log('kterm-server HTTP, page checkpoint, resumable WebSocket, replay, and Shell identity checks passed.');
+console.log('kterm-server HTTP, page checkpoint, URL takeover, replay, and Shell identity checks passed.');
