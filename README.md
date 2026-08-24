@@ -49,6 +49,12 @@ dotnet run --project src\KevinZonda.Terminal\KevinZonda.Terminal.csproj
 dotnet run --project src\KevinZonda.Terminal.Server\KevinZonda.Terminal.Server.csproj
 ```
 
+也可以直接运行根目录的 `server.cmd`；命令行参数会原样传给 Server：
+
+```powershell
+server.cmd --urls http://0.0.0.0:8080
+```
+
 然后在本机打开 `http://localhost:7132`，或在远程设备打开
 `http://<KTerm 所在电脑的 IP>:7132`。可通过 `--urls` 修改监听地址，通过
 `--working-directory` 指定新 Shell 的启动目录：
