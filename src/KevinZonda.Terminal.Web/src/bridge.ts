@@ -1,10 +1,22 @@
 import { createId } from './id';
+import type { BrowserResumeStore, ResumeInputRecord } from './resume-store';
 import { DEFAULT_THEME_NAME, normalizeTerminalThemeName } from './themes';
 
 export interface SessionCreated {
   sessionId: string;
   shellName: string;
   processId: number;
+}
+
+export interface AttachedSession extends SessionCreated {
+  inputAck: number;
+  latestOutputSeq: number;
+  checkpointOutputSeq: number;
+  cols: number;
+  rows: number;
+  exited: boolean;
+  exitCode: number;
+  failure?: string;
 }
 
 export interface FontSettings {
@@ -151,12 +163,14 @@ export class NativeBridge {
   private readonly webView = window.chrome?.webview;
   private socket?: WebSocket;
   private readonly connectionReady: Promise<void>;
-  private readonly runtimeId = createId();
+  private readonly runtimeId: string;
   private readonly pendingInputs = new Map<string, PendingInputState>();
   private readonly pendingResizes = new Map<string, BridgeEvent>();
   private readonly pendingCloses = new Map<string, BridgeEvent>();
   private readonly outputAcks = new Map<string, number>();
+  private readonly checkpointAcks = new Map<string, number>();
   private readonly receivedOutputSequences = new Map<string, number>();
+  private readonly attachedSessions = new Map<string, AttachedSession>();
   private readonly closedSessionIds = new Set<string>();
   private resolveConnectionReady: () => void = () => undefined;
   private reconnectTimer?: number;
@@ -166,7 +180,8 @@ export class NativeBridge {
   private currentSettings: AppSettings = structuredClone(DEFAULT_SETTINGS);
   private serverFontSize = DEFAULT_SETTINGS.font.size;
 
-  public constructor() {
+  public constructor(private readonly resumeStore?: BrowserResumeStore) {
+    this.runtimeId = resumeStore?.runtimeId ?? createId();
     if (this.webView) {
       this.webView.addEventListener('message', this.handleMessage);
       this.connectionReady = Promise.resolve();
@@ -175,6 +190,7 @@ export class NativeBridge {
 
     window.addEventListener('storage', this.handleBrowserStorage);
     window.addEventListener('online', () => this.reconnectNow());
+    this.hydrateResumeState();
     this.connectionReady = new Promise<void>(resolve => {
       this.resolveConnectionReady = resolve;
     });
@@ -217,8 +233,30 @@ export class NativeBridge {
       if (!this.receivedOutputSequences.has(session.sessionId)) {
         this.receivedOutputSequences.set(session.sessionId, 0);
       }
+      this.checkpointAcks.set(session.sessionId, 0);
+      this.attachedSessions.set(session.sessionId, {
+        ...session,
+        inputAck,
+        latestOutputSeq: this.payloadNumber(event, 'latestOutputSeq'),
+        checkpointOutputSeq: 0,
+        cols,
+        rows,
+        exited: false,
+        exitCode: 0
+      });
+      this.resumeStore?.registerSession(
+        session.sessionId,
+        session.shellName,
+        session.processId,
+        cols,
+        rows
+      );
     }
     return session;
+  }
+
+  public getAttachedSessions(): AttachedSession[] {
+    return [...this.attachedSessions.values()].map(session => structuredClone(session));
   }
 
   public sendInput(sessionId: string, data: string): void {
@@ -236,6 +274,7 @@ export class NativeBridge {
     }
     const event = this.createEvent('session.resize', { cols, rows }, sessionId);
     this.pendingResizes.set(sessionId, event);
+    this.resumeStore?.updateResize(sessionId, cols, rows);
     this.sendBrowserEvent(event);
   }
 
@@ -248,6 +287,7 @@ export class NativeBridge {
     const event = this.createEvent('session.close', { operationId }, sessionId, operationId);
     this.closedSessionIds.add(sessionId);
     this.pendingCloses.set(sessionId, event);
+    this.resumeStore?.markSessionClosing(sessionId, operationId);
     this.sendBrowserEvent(event);
   }
 
@@ -265,6 +305,19 @@ export class NativeBridge {
       sessionId,
       Math.max(this.receivedOutputSequences.get(sessionId) ?? 0, outputSeq));
     this.sendBrowserEvent(this.createEvent('session.outputAck', { outputSeq }, sessionId));
+  }
+
+  public acknowledgeCheckpoint(sessionId: string, outputSeq: number): void {
+    if (this.webView || this.closedSessionIds.has(sessionId) ||
+        !Number.isSafeInteger(outputSeq) || outputSeq <= 0) {
+      return;
+    }
+    const acknowledged = this.checkpointAcks.get(sessionId) ?? 0;
+    if (outputSeq <= acknowledged) {
+      return;
+    }
+    this.checkpointAcks.set(sessionId, outputSeq);
+    this.sendBrowserEvent(this.createEvent('session.checkpointAck', { outputSeq }, sessionId));
   }
 
   public openSettings(): void {
@@ -546,7 +599,8 @@ export class NativeBridge {
       const requestId = createId();
       const sessions = [...this.outputAcks].map(([sessionId, lastAppliedOutputSeq]) => ({
         sessionId,
-        lastAppliedOutputSeq
+        lastAppliedOutputSeq,
+        checkpointOutputSeq: this.checkpointAcks.get(sessionId) ?? 0
       }));
       socket.send(JSON.stringify(this.createEvent('runtime.attach', {
         runtimeId: this.runtimeId,
@@ -580,6 +634,7 @@ export class NativeBridge {
     if (!this.webView && event.type === 'runtime.attached') {
       this.attached = true;
       this.reconnectAttempt = 0;
+      this.updateAttachedSessions(event);
       this.reconcileAttachedSessions(event);
       this.flushBrowserQueues();
       this.resolveConnectionReady();
@@ -597,6 +652,7 @@ export class NativeBridge {
           }
         }
         state.nextSequence = Math.max(state.nextSequence, acknowledged + 1);
+        this.persistInputState(event.sessionId, state);
       }
     }
 
@@ -628,7 +684,10 @@ export class NativeBridge {
       this.pendingResizes.delete(event.sessionId);
       this.pendingInputs.delete(event.sessionId);
       this.outputAcks.delete(event.sessionId);
+      this.checkpointAcks.delete(event.sessionId);
       this.receivedOutputSequences.delete(event.sessionId);
+      this.attachedSessions.delete(event.sessionId);
+      this.resumeStore?.completeSession(event.sessionId);
     }
 
     if (event.requestId) {
@@ -678,6 +737,91 @@ export class NativeBridge {
     this.connectSocket();
   }
 
+  private hydrateResumeState(): void {
+    for (const session of this.resumeStore?.getSessions() ?? []) {
+      const checkpoint = Math.max(0, session.checkpointOutputSeq);
+      this.outputAcks.set(session.sessionId, checkpoint);
+      this.checkpointAcks.set(session.sessionId, checkpoint);
+      this.receivedOutputSequences.set(session.sessionId, checkpoint);
+
+      const pending = new Map<number, BridgeEvent>();
+      for (const input of session.pendingInputs) {
+        if (!Number.isSafeInteger(input.inputSeq) || input.inputSeq <= 0) {
+          continue;
+        }
+        pending.set(input.inputSeq, this.createEvent(
+          input.type,
+          { data: input.data, inputSeq: input.inputSeq },
+          session.sessionId
+        ));
+      }
+      this.pendingInputs.set(session.sessionId, {
+        nextSequence: Math.max(
+          session.nextInputSeq,
+          ...[...pending.keys()].map(sequence => sequence + 1),
+          1
+        ),
+        pending
+      });
+      this.pendingResizes.set(
+        session.sessionId,
+        this.createEvent('session.resize', { cols: session.cols, rows: session.rows }, session.sessionId)
+      );
+      if (session.pendingCloseOperationId) {
+        this.closedSessionIds.add(session.sessionId);
+        this.pendingCloses.set(session.sessionId, this.createEvent(
+          'session.close',
+          { operationId: session.pendingCloseOperationId },
+          session.sessionId,
+          session.pendingCloseOperationId
+        ));
+      }
+    }
+  }
+
+  private updateAttachedSessions(event: BridgeEvent): void {
+    this.attachedSessions.clear();
+    const rawSessions = event.payload.sessions;
+    if (!Array.isArray(rawSessions)) {
+      return;
+    }
+
+    for (const value of rawSessions) {
+      if (typeof value !== 'object' || value === null) {
+        continue;
+      }
+      const session = value as Record<string, unknown>;
+      if (typeof session.sessionId !== 'string' || typeof session.shellName !== 'string' ||
+          typeof session.processId !== 'number') {
+        continue;
+      }
+      this.attachedSessions.set(session.sessionId, {
+        sessionId: session.sessionId,
+        shellName: session.shellName,
+        processId: session.processId,
+        inputAck: this.finiteNumber(session.inputAck) ?? 0,
+        latestOutputSeq: this.finiteNumber(session.latestOutputSeq) ?? 0,
+        checkpointOutputSeq: this.finiteNumber(session.checkpointOutputSeq) ?? 0,
+        cols: this.finiteNumber(session.cols) ?? 80,
+        rows: this.finiteNumber(session.rows) ?? 24,
+        exited: session.exited === true,
+        exitCode: this.finiteNumber(session.exitCode) ?? 0,
+        failure: typeof session.failure === 'string' ? session.failure : undefined
+      });
+    }
+  }
+
+  private persistInputState(sessionId: string, state: PendingInputState): void {
+    const pendingInputs: ResumeInputRecord[] = [...state.pending]
+      .sort(([left], [right]) => left - right)
+      .map(([inputSeq, event]) => ({
+        type: event.type === 'session.binaryInput' ? 'session.binaryInput' : 'session.input',
+        inputSeq,
+        data: typeof event.payload.data === 'string' ? event.payload.data : ''
+      }));
+    this.resumeStore?.saveInputState(sessionId, state.nextSequence, pendingInputs);
+  }
+
   private reconcileAttachedSessions(event: BridgeEvent): void {
     const rawSessions = event.payload.sessions;
     const attachedSessions = new Map<string, Record<string, unknown>>();
@@ -714,8 +858,11 @@ export class NativeBridge {
       this.pendingResizes.delete(sessionId);
       this.pendingInputs.delete(sessionId);
       this.outputAcks.delete(sessionId);
+      this.checkpointAcks.delete(sessionId);
       this.receivedOutputSequences.delete(sessionId);
+      this.attachedSessions.delete(sessionId);
       this.closedSessionIds.add(sessionId);
+      this.resumeStore?.completeSession(sessionId);
       const missingEvent: BridgeEvent = wasClosing
         ? this.createEvent('session.closed', {}, sessionId)
         : this.createEvent('session.exited', {
@@ -752,6 +899,11 @@ export class NativeBridge {
     this.outputAcks.forEach((outputSeq, sessionId) => {
       if (outputSeq > 0) {
         this.sendBrowserEvent(this.createEvent('session.outputAck', { outputSeq }, sessionId));
+      }
+    });
+    this.checkpointAcks.forEach((outputSeq, sessionId) => {
+      if (outputSeq > 0) {
+        this.sendBrowserEvent(this.createEvent('session.checkpointAck', { outputSeq }, sessionId));
       }
     });
   }
@@ -809,6 +961,7 @@ export class NativeBridge {
     const inputSeq = state.nextSequence++;
     const event = this.createEvent(type, { ...payload, inputSeq }, sessionId);
     state.pending.set(inputSeq, event);
+    this.persistInputState(sessionId, state);
     this.sendBrowserEvent(event);
   }
 

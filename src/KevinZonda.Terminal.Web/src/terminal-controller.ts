@@ -1,10 +1,12 @@
 import { FitAddon } from '@xterm/addon-fit';
 import type { LigaturesAddon } from '@xterm/addon-ligatures';
+import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import type { IDisposable } from '@xterm/xterm';
 import type { CursorSettings, FontSettings, NativeBridge, SessionCreated, ThemeSettings } from './bridge';
+import type { TerminalCheckpoint } from './resume-store';
 import { resolveTerminalTheme } from './themes';
 
 export interface TerminalCallbacks {
@@ -12,6 +14,7 @@ export interface TerminalCallbacks {
   onFocus(sessionId: string): void;
   onFontSizeChanged(sessionId: string, fontSize: number): void;
   onTitle(sessionId: string, title: string): void;
+  onTerminalCheckpoint(checkpoint: TerminalCheckpoint): Promise<void>;
 }
 
 export type MobileToolbarKey =
@@ -44,6 +47,7 @@ export class TerminalController {
   private readonly callbacks: TerminalCallbacks;
   private readonly terminal: Terminal;
   private readonly fitAddon = new FitAddon();
+  private readonly serializeAddon = new SerializeAddon();
   private readonly host = document.createElement('div');
   private readonly resizeObserver: ResizeObserver;
   private readonly disposables: IDisposable[] = [];
@@ -71,6 +75,11 @@ export class TerminalController {
   private pinchStartFontSize = 0;
   private suppressXtermTouchGestures = false;
   private touchGestureResetTimer?: number;
+  private checkpointTimer?: number;
+  private checkpointInFlight?: Promise<void>;
+  private lastRenderedOutputSeq = 0;
+  private lastCheckpointOutputSeq = 0;
+  private suppressSessionResize = false;
   private disposed = false;
 
   public constructor(
@@ -114,6 +123,7 @@ export class TerminalController {
       windowsPty: { backend: 'conpty', buildNumber: 19045 }
     });
     this.terminal.loadAddon(this.fitAddon);
+    this.terminal.loadAddon(this.serializeAddon);
     this.terminal.loadAddon(new WebLinksAddon((_event, uri) => this.bridge.openExternal(uri)));
 
     this.disposables.push(
@@ -127,6 +137,9 @@ export class TerminalController {
 
         this.lastCols = size.cols;
         this.lastRows = size.rows;
+        if (this.suppressSessionResize) {
+          return;
+        }
         this.bridge.resize(this.sessionId, size.cols, size.rows);
       })
     );
@@ -221,6 +234,79 @@ export class TerminalController {
 
   public write(data: string, callback?: () => void): void {
     this.terminal.write(data, callback);
+  }
+
+  public writeOutput(data: string, outputSeq: number): void {
+    this.terminal.write(data, () => {
+      if (!Number.isSafeInteger(outputSeq) || outputSeq <= 0 || this.disposed) {
+        return;
+      }
+      this.lastRenderedOutputSeq = Math.max(this.lastRenderedOutputSeq, outputSeq);
+      this.bridge.acknowledgeOutput(this.sessionId, outputSeq);
+      this.scheduleCheckpoint();
+    });
+  }
+
+  public async restoreCheckpoint(checkpoint: TerminalCheckpoint | undefined): Promise<void> {
+    if (!checkpoint || checkpoint.sessionId !== this.sessionId || checkpoint.outputSeq <= 0) {
+      return;
+    }
+    this.suppressSessionResize = true;
+    try {
+      if (checkpoint.cols > 0 && checkpoint.rows > 0) {
+        this.terminal.resize(checkpoint.cols, checkpoint.rows);
+      }
+      await new Promise<void>(resolve => this.terminal.write(checkpoint.data, resolve));
+    } finally {
+      this.suppressSessionResize = false;
+    }
+    this.lastRenderedOutputSeq = checkpoint.outputSeq;
+    this.lastCheckpointOutputSeq = checkpoint.outputSeq;
+  }
+
+  public checkpointNow(): Promise<void> {
+    if (this.checkpointTimer !== undefined) {
+      window.clearTimeout(this.checkpointTimer);
+      this.checkpointTimer = undefined;
+    }
+    if (!this.checkpointInFlight && !this.disposed &&
+        this.lastRenderedOutputSeq > this.lastCheckpointOutputSeq) {
+      this.checkpointInFlight = this.runCheckpointLoop().finally(() => {
+        this.checkpointInFlight = undefined;
+        if (this.lastRenderedOutputSeq > this.lastCheckpointOutputSeq) {
+          this.scheduleCheckpoint();
+        }
+      });
+    }
+    return this.checkpointInFlight ?? Promise.resolve();
+  }
+
+  private async runCheckpointLoop(): Promise<void> {
+    while (!this.disposed && this.lastRenderedOutputSeq > this.lastCheckpointOutputSeq) {
+      const outputSeq = this.lastRenderedOutputSeq;
+      const checkpoint: TerminalCheckpoint = {
+        sessionId: this.sessionId,
+        outputSeq,
+        data: this.serializeAddon.serialize(),
+        cols: this.terminal.cols,
+        rows: this.terminal.rows,
+        updatedAt: new Date().toISOString()
+      };
+      await this.callbacks.onTerminalCheckpoint(checkpoint);
+      this.lastCheckpointOutputSeq = Math.max(this.lastCheckpointOutputSeq, outputSeq);
+    }
+  }
+
+  private scheduleCheckpoint(): void {
+    if (this.checkpointTimer !== undefined || this.disposed) {
+      return;
+    }
+    this.checkpointTimer = window.setTimeout(() => {
+      this.checkpointTimer = undefined;
+      void this.checkpointNow().catch(error => {
+        console.error('Unable to checkpoint terminal state.', error);
+      });
+    }, 1500);
   }
 
   public markExited(exitCode: number, failure?: string): void {
@@ -349,6 +435,9 @@ export class TerminalController {
     }
     if (this.touchGestureResetTimer !== undefined) {
       window.clearTimeout(this.touchGestureResetTimer);
+    }
+    if (this.checkpointTimer !== undefined) {
+      window.clearTimeout(this.checkpointTimer);
     }
     this.cancelWebglReclaim();
     this.host.removeEventListener('wheel', this.handleWheel, { capture: true });

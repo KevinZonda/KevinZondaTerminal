@@ -20,7 +20,7 @@ internal sealed class BrowserTerminalRuntimeRegistry : IAsyncDisposable
         string runtimeId,
         IBrowserTerminalClient client,
         string? requestId,
-        IReadOnlyDictionary<string, long> outputAcks)
+        IReadOnlyDictionary<string, BrowserSessionResumeState> resumeStates)
     {
         while (true)
         {
@@ -29,7 +29,7 @@ internal sealed class BrowserTerminalRuntimeRegistry : IAsyncDisposable
                 id => new BrowserTerminalRuntime(id, _settingsStore.Load(), _options));
             try
             {
-                return new BrowserRuntimeLease(runtime, runtime.Attach(client, requestId, outputAcks));
+                return new BrowserRuntimeLease(runtime, runtime.Attach(client, requestId, resumeStates));
             }
             catch (ObjectDisposedException)
             {

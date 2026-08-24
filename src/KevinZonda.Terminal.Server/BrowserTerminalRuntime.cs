@@ -52,7 +52,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
     internal long Attach(
         IBrowserTerminalClient client,
         string? requestId,
-        IReadOnlyDictionary<string, long> outputAcks)
+        IReadOnlyDictionary<string, BrowserSessionResumeState> resumeStates)
     {
         IBrowserTerminalClient? previousClient;
         long epoch;
@@ -64,11 +64,11 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             epoch = ++_epoch;
             _idleVersion++;
 
-            foreach (var (sessionId, outputAck) in outputAcks)
+            foreach (var (sessionId, resumeState) in resumeStates)
             {
                 if (_sessionStates.TryGetValue(sessionId, out var state))
                 {
-                    AcknowledgeOutputLocked(state, outputAck);
+                    AcknowledgeCheckpointLocked(state, resumeState.CheckpointOutputSeq);
                 }
             }
 
@@ -85,16 +85,22 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                         processId = state.ProcessId,
                         inputAck = state.LastInputSeq,
                         latestOutputSeq = state.NextOutputSeq - 1,
+                        checkpointOutputSeq = state.LastCheckpointSeq,
                         cols = state.Columns,
                         rows = state.Rows,
-                        exited = state.ExitStatus is not null
+                        exited = state.ExitStatus is not null,
+                        exitCode = state.ExitStatus?.ExitCode ?? 0,
+                        failure = state.ExitStatus?.Failure
                     })
                     .ToArray()
             });
 
             foreach (var state in _sessionStates.Values.Where(state => state.Announced))
             {
-                ReplaySessionLocked(client, state);
+                var lastApplied = resumeStates.TryGetValue(state.SessionId, out var resumeState)
+                    ? resumeState.LastAppliedOutputSeq
+                    : state.LastCheckpointSeq;
+                ReplaySessionLocked(client, state, lastApplied);
             }
 
             client.TryPost("agentUsage.changed", payload: new { agentUsage = _agentUsage.Current });
@@ -178,7 +184,13 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 break;
 
             case "session.outputAck":
-                AcknowledgeOutput(
+                // Render acknowledgements let a live page skip duplicate output on
+                // transient reconnects. Journal data is retained until the browser
+                // has durably committed an xterm checkpoint.
+                break;
+
+            case "session.checkpointAck":
+                AcknowledgeCheckpoint(
                     RequireSessionId(message),
                     GetInt64(message.Payload, "outputSeq", 0));
                 break;
@@ -276,7 +288,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 latestOutputSeq = state.NextOutputSeq - 1
             });
             state.Announced = true;
-            ReplaySessionLocked(source, state);
+            ReplaySessionLocked(source, state, state.LastCheckpointSeq);
         }
     }
 
@@ -378,27 +390,27 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             inputSeq = state.LastInputSeq
         });
 
-    private void AcknowledgeOutput(string sessionId, long outputSeq)
+    private void AcknowledgeCheckpoint(string sessionId, long outputSeq)
     {
         lock (_sync)
         {
             if (_sessionStates.TryGetValue(sessionId, out var state))
             {
-                AcknowledgeOutputLocked(state, outputSeq);
+                AcknowledgeCheckpointLocked(state, outputSeq);
             }
         }
     }
 
-    private void AcknowledgeOutputLocked(SessionRuntimeState state, long outputSeq)
+    private void AcknowledgeCheckpointLocked(SessionRuntimeState state, long outputSeq)
     {
         var latest = state.NextOutputSeq - 1;
-        var acknowledged = Math.Min(Math.Max(outputSeq, state.LastOutputAck), latest);
-        if (acknowledged == state.LastOutputAck)
+        var acknowledged = Math.Min(Math.Max(outputSeq, state.LastCheckpointSeq), latest);
+        if (acknowledged == state.LastCheckpointSeq)
         {
             return;
         }
 
-        state.LastOutputAck = acknowledged;
+        state.LastCheckpointSeq = acknowledged;
         while (state.Output.First is { } first && first.Value.Sequence <= acknowledged)
         {
             state.Output.RemoveFirst();
@@ -516,7 +528,10 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         }
     }
 
-    private void ReplaySessionLocked(IBrowserTerminalClient? client, SessionRuntimeState state)
+    private void ReplaySessionLocked(
+        IBrowserTerminalClient? client,
+        SessionRuntimeState state,
+        long afterOutputSeq)
     {
         if (client is null)
         {
@@ -524,7 +539,10 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         }
         foreach (var output in state.Output)
         {
-            PostOutputLocked(client, state.SessionId, output);
+            if (output.Sequence > afterOutputSeq)
+            {
+                PostOutputLocked(client, state.SessionId, output);
+            }
         }
         if (state.ExitStatus is not null)
         {
@@ -694,7 +712,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         internal int Rows { get; set; }
         internal bool Announced { get; set; }
         internal long LastInputSeq { get; set; }
-        internal long LastOutputAck { get; set; }
+        internal long LastCheckpointSeq { get; set; }
         internal long NextOutputSeq { get; set; } = 1;
         internal LinkedList<OutputRecord> Output { get; } = [];
         internal TerminalExitStatus? ExitStatus { get; set; }

@@ -109,4 +109,4 @@ finally {
     }
 }
 
-Write-Output 'kterm-server smoke test passed: HTTP assets, reconnect protocol, Shell identity, output replay, explicit cleanup, and shutdown cleanup.'
+Write-Output 'kterm-server smoke test passed: HTTP assets, page checkpoint protocol, Shell identity, output replay, explicit cleanup, and shutdown cleanup.'

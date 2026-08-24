@@ -89,40 +89,40 @@ await withTimeout((async () => {
 
   let inputAcknowledged = false;
   let beforeOutput = '';
-  while (!inputAcknowledged || !beforeOutput.includes('KTERM_BEFORE_RECONNECT')) {
+  let checkpointOutputSeq = 0;
+  while (!inputAcknowledged ||
+         beforeOutput.split('KTERM_BEFORE_RECONNECT').length - 1 < 2) {
     message = await first.nextMessage();
     if (message.type === 'session.inputAck' && message.sessionId === sessionId) {
       inputAcknowledged = message.payload.inputSeq >= 1;
     }
     if (message.type === 'session.output' && message.sessionId === sessionId) {
       beforeOutput += message.payload.data;
+      checkpointOutputSeq = Math.max(checkpointOutputSeq, message.payload.outputSeq ?? 0);
     }
     if (message.type === 'session.error') {
       throw new Error(message.payload.message);
     }
   }
+  send(first.socket, 'session.outputAck', { outputSeq: checkpointOutputSeq }, sessionId);
+  send(first.socket, 'session.checkpointAck', { outputSeq: checkpointOutputSeq }, sessionId);
 
   first.socket.close();
   stage = 'closing first socket';
   await new Promise(resolve => first.socket.addEventListener('close', resolve, { once: true }));
 
   stage = 'attaching second socket';
-  const second = await connect([{ sessionId, lastAppliedOutputSeq: 0 }]);
+  const second = await connect([{
+    sessionId,
+    lastAppliedOutputSeq: checkpointOutputSeq,
+    checkpointOutputSeq
+  }]);
   const resumed = second.attached.payload.sessions.find(session => session.sessionId === sessionId);
   if (!resumed || resumed.processId !== processId) {
     throw new Error(`Reconnect did not preserve Shell PID ${processId}.`);
   }
-
-  let replayedOutput = '';
-  stage = 'waiting for replay';
-  while (!replayedOutput.includes('KTERM_BEFORE_RECONNECT')) {
-    message = await second.nextMessage();
-    if (message.type === 'session.output' && message.sessionId === sessionId) {
-      replayedOutput += message.payload.data;
-    }
-    if (message.type === 'session.error') {
-      throw new Error(message.payload.message);
-    }
+  if (resumed.checkpointOutputSeq !== checkpointOutputSeq) {
+    throw new Error(`Reconnect did not retain checkpoint ${checkpointOutputSeq}.`);
   }
 
   send(second.socket, 'session.input', {
@@ -132,7 +132,7 @@ await withTimeout((async () => {
   stage = 'waiting for second input and output';
   let secondInputAcknowledged = false;
   let afterOutput = '';
-  let latestOutputSeq = 0;
+  let latestOutputSeq = checkpointOutputSeq;
   while (!secondInputAcknowledged || !afterOutput.includes('KTERM_AFTER_RECONNECT')) {
     message = await second.nextMessage();
     if (message.type === 'session.inputAck' && message.sessionId === sessionId) {
@@ -146,13 +146,44 @@ await withTimeout((async () => {
       throw new Error(message.payload.message);
     }
   }
-  send(second.socket, 'session.outputAck', { outputSeq: latestOutputSeq }, sessionId);
-  send(second.socket, 'session.close', { operationId: 'close-1' }, sessionId, 'close-1');
+  second.socket.close();
+  stage = 'closing second socket before checkpoint';
+  await new Promise(resolve => second.socket.addEventListener('close', resolve, { once: true }));
+
+  stage = 'attaching third socket from durable checkpoint';
+  const third = await connect([{
+    sessionId,
+    lastAppliedOutputSeq: checkpointOutputSeq,
+    checkpointOutputSeq
+  }]);
+  const resumedAgain = third.attached.payload.sessions.find(session => session.sessionId === sessionId);
+  if (!resumedAgain || resumedAgain.processId !== processId) {
+    throw new Error(`Checkpoint reconnect did not preserve Shell PID ${processId}.`);
+  }
+
+  let replayedOutput = '';
+  stage = 'replaying output newer than checkpoint';
+  while (!replayedOutput.includes('KTERM_AFTER_RECONNECT')) {
+    message = await third.nextMessage();
+    if (message.type === 'session.output' && message.sessionId === sessionId) {
+      replayedOutput += message.payload.data;
+      latestOutputSeq = Math.max(latestOutputSeq, message.payload.outputSeq ?? 0);
+    }
+    if (message.type === 'session.error') {
+      throw new Error(message.payload.message);
+    }
+  }
+  if (replayedOutput.includes('KTERM_BEFORE_RECONNECT')) {
+    throw new Error('Output already covered by the checkpoint was replayed.');
+  }
+
+  send(third.socket, 'session.checkpointAck', { outputSeq: latestOutputSeq }, sessionId);
+  send(third.socket, 'session.close', { operationId: 'close-1' }, sessionId, 'close-1');
   stage = 'closing Shell';
   do {
-    message = await second.nextMessage();
+    message = await third.nextMessage();
   } while (message.type !== 'session.closed');
-  second.socket.close();
+  third.socket.close();
 })(), () => `Timed out testing resumable kterm-server Shell I/O (stage: ${stage}).`);
 
-console.log('kterm-server HTTP, resumable WebSocket, replay, and Shell identity checks passed.');
+console.log('kterm-server HTTP, page checkpoint, resumable WebSocket, replay, and Shell identity checks passed.');

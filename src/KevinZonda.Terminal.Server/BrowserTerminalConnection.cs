@@ -189,7 +189,7 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             throw new InvalidDataException("The runtime ID is missing or invalid.");
         }
 
-        var outputAcks = new Dictionary<string, long>(StringComparer.Ordinal);
+        var resumeStates = new Dictionary<string, BrowserSessionResumeState>(StringComparer.Ordinal);
         if (message.Payload.ValueKind == JsonValueKind.Object &&
             message.Payload.TryGetProperty("sessions", out var sessions) &&
             sessions.ValueKind == JsonValueKind.Array)
@@ -198,14 +198,17 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             {
                 var sessionId = GetString(session, "sessionId");
                 var outputSeq = GetInt64(session, "lastAppliedOutputSeq", 0);
+                var checkpointSeq = GetInt64(session, "checkpointOutputSeq", 0);
                 if (!string.IsNullOrWhiteSpace(sessionId) && outputSeq >= 0)
                 {
-                    outputAcks[sessionId] = outputSeq;
+                    resumeStates[sessionId] = new BrowserSessionResumeState(
+                        outputSeq,
+                        Math.Clamp(checkpointSeq, 0, outputSeq));
                 }
             }
         }
 
-        var lease = _runtimes.Attach(runtimeId, this, message.RequestId, outputAcks);
+        var lease = _runtimes.Attach(runtimeId, this, message.RequestId, resumeStates);
         _runtime = lease.Runtime;
         _runtimeEpoch = lease.Epoch;
     }
@@ -258,3 +261,5 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
 
     private sealed record OutboundFrame(string Json, int ByteCount);
 }
+
+internal sealed record BrowserSessionResumeState(long LastAppliedOutputSeq, long CheckpointOutputSeq);

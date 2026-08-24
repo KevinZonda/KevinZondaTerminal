@@ -3,6 +3,7 @@ import type {
   AgentProviderUsage,
   AgentUsageStatus,
   AppSettings,
+  AttachedSession,
   BridgeEvent,
   NativeBridge,
   SessionCreated,
@@ -11,6 +12,12 @@ import type {
 import { TerminalController } from './terminal-controller';
 import type { MobileToolbarKey, TerminalCallbacks } from './terminal-controller';
 import { createId } from './id';
+import type {
+  BrowserResumeStore,
+  ResumeLayoutNode,
+  ResumeWorkspaceRecord,
+  TerminalCheckpoint
+} from './resume-store';
 import { applyTerminalThemeToDocument } from './themes';
 
 type SplitDirection = 'columns' | 'rows';
@@ -128,8 +135,10 @@ export class Workspace implements TerminalCallbacks {
   private sidebarSwipe?: SidebarSwipeState;
   private suppressXtermTouchGestures = false;
   private touchGestureResetTimer?: number;
+  private restoringResumeState = false;
+  private checkpointStorageWarningShown = false;
 
-  public constructor(bridge: NativeBridge) {
+  public constructor(bridge: NativeBridge, private readonly resumeStore?: BrowserResumeStore) {
     this.bridge = bridge;
     this.app = this.requireElement('app');
     this.workspace = this.requireElement('workspace');
@@ -203,6 +212,8 @@ export class Workspace implements TerminalCallbacks {
     window.visualViewport?.addEventListener('resize', this.updateMobileInputToolbar);
     window.visualViewport?.addEventListener('scroll', this.updateMobileInputToolbar);
     this.coarsePointer.addEventListener('change', this.updateMobileInputToolbar);
+    window.addEventListener('pagehide', this.handlePageHide);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
     this.updateMobileInputToolbar();
   }
 
@@ -212,8 +223,171 @@ export class Workspace implements TerminalCallbacks {
     this.applySettings(initialState.settings);
     this.renderSystemMetrics(initialState.systemMetrics);
     this.renderAgentUsage(initialState.agentUsage);
-    await this.createWorkspace();
+    const restored = this.resumeStore?.isResuming === true && await this.restoreWorkspaceState();
+    if (!restored) {
+      await this.createWorkspace();
+    }
     this.setStatus('');
+  }
+
+  private async restoreWorkspaceState(): Promise<boolean> {
+    if (!this.resumeStore) {
+      return false;
+    }
+
+    this.restoringResumeState = true;
+    try {
+      const snapshot = this.resumeStore.getWorkspaceSnapshot();
+      const attachedSessions = new Map(
+        this.bridge.getAttachedSessions().map(session => [session.sessionId, session])
+      );
+      const referencedSessions = new Set<string>();
+      const restoredWorkspaces: WorkspaceState[] = [];
+
+      for (const storedWorkspace of snapshot.workspaces) {
+        const panes = new Map<string, PaneState>();
+        for (const storedPane of storedWorkspace.panes) {
+          const tabs = storedPane.tabs
+            .map(tab => {
+              const session = attachedSessions.get(tab.sessionId);
+              if (!session) {
+                this.resumeStore?.completeSession(tab.sessionId);
+                return undefined;
+              }
+              return {
+                sessionId: tab.sessionId,
+                title: tab.title || session.shellName,
+                processInfo: `${session.shellName} · PID ${session.processId}`
+              } satisfies TerminalTabState;
+            })
+            .filter((tab): tab is TerminalTabState => tab !== undefined);
+          if (tabs.length === 0) {
+            continue;
+          }
+          panes.set(storedPane.id, {
+            id: storedPane.id,
+            tabs,
+            activeSessionId: tabs.some(tab => tab.sessionId === storedPane.activeSessionId)
+              ? storedPane.activeSessionId
+              : tabs[0]!.sessionId
+          });
+        }
+
+        if (panes.size === 0) {
+          continue;
+        }
+        const root = this.restoreLayoutNode(storedWorkspace.root, new Set(panes.keys()))
+          ?? { type: 'pane' as const, paneId: panes.keys().next().value as string };
+        const paneIds = new Set(this.collectPaneIds(root));
+        for (const paneId of [...panes.keys()]) {
+          if (!paneIds.has(paneId)) {
+            panes.delete(paneId);
+          }
+        }
+        if (panes.size === 0) {
+          continue;
+        }
+
+        restoredWorkspaces.push({
+          id: storedWorkspace.id,
+          name: storedWorkspace.name || `Workspace ${restoredWorkspaces.length + 1}`,
+          panes,
+          root,
+          focusedPaneId: panes.has(storedWorkspace.focusedPaneId ?? '')
+            ? storedWorkspace.focusedPaneId
+            : panes.keys().next().value as string
+        });
+      }
+
+      for (const workspace of restoredWorkspaces) {
+        for (const pane of workspace.panes.values()) {
+          for (const tab of pane.tabs) {
+            referencedSessions.add(tab.sessionId);
+          }
+        }
+      }
+
+      if (restoredWorkspaces.length === 0) {
+        for (const session of attachedSessions.values()) {
+          this.bridge.closeSession(session.sessionId);
+        }
+        return false;
+      }
+
+      this.workspaces.push(...restoredWorkspaces);
+      this.nextWorkspaceNumber = Math.max(1, snapshot.nextWorkspaceNumber);
+      this.activeWorkspaceId = restoredWorkspaces.some(
+        workspace => workspace.id === snapshot.activeWorkspaceId
+      )
+        ? snapshot.activeWorkspaceId
+        : restoredWorkspaces[0]!.id;
+
+      for (const sessionId of referencedSessions) {
+        const session = attachedSessions.get(sessionId)!;
+        await this.restoreTerminal(session);
+      }
+      for (const session of attachedSessions.values()) {
+        if (!referencedSessions.has(session.sessionId)) {
+          this.bridge.closeSession(session.sessionId);
+        }
+      }
+
+      this.renderSidebar();
+      this.render();
+      const focused = this.focusedPane;
+      if (focused) {
+        this.focusSession(focused.activeSessionId);
+      }
+      return true;
+    } finally {
+      this.restoringResumeState = false;
+      this.persistResumeState();
+    }
+  }
+
+  private restoreLayoutNode(
+    node: ResumeLayoutNode | undefined,
+    validPaneIds: ReadonlySet<string>
+  ): LayoutNode | null {
+    if (!node) {
+      return null;
+    }
+    if (node.type === 'pane') {
+      return validPaneIds.has(node.paneId) ? { type: 'pane', paneId: node.paneId } : null;
+    }
+
+    const first = this.restoreLayoutNode(node.first, validPaneIds);
+    const second = this.restoreLayoutNode(node.second, validPaneIds);
+    if (!first) {
+      return second;
+    }
+    if (!second) {
+      return first;
+    }
+    return {
+      type: 'split',
+      direction: node.direction,
+      ratio: Math.min(0.9, Math.max(0.1, node.ratio)),
+      first,
+      second
+    };
+  }
+
+  private async restoreTerminal(session: AttachedSession): Promise<void> {
+    const terminal = this.createTerminalController(session);
+    let checkpoint: TerminalCheckpoint | undefined;
+    try {
+      checkpoint = await this.resumeStore?.loadCheckpoint(session.sessionId);
+    } catch (error) {
+      console.error('Unable to restore terminal checkpoint.', error);
+    }
+    await terminal.restoreCheckpoint(checkpoint);
+    this.closedSessionIds.delete(session.sessionId);
+    this.terminals.set(session.sessionId, terminal);
+    this.drainEarlyOutput(session.sessionId, terminal);
+    if (session.exited) {
+      terminal.markExited(session.exitCode, session.failure);
+    }
   }
 
   public async createWorkspace(activate = false): Promise<void> {
@@ -312,6 +486,73 @@ export class Workspace implements TerminalCallbacks {
     tab.title = title.trim();
     this.refreshPaneTabs(pane);
     this.syncWindowTitle();
+    this.persistResumeState();
+  }
+
+  public async onTerminalCheckpoint(checkpoint: TerminalCheckpoint): Promise<void> {
+    if (!this.resumeStore) {
+      return;
+    }
+    try {
+      await this.resumeStore.saveCheckpoint(checkpoint);
+    } catch (error) {
+      if (!this.checkpointStorageWarningShown) {
+        this.checkpointStorageWarningShown = true;
+        this.setStatus('Terminal history cannot be saved for page refresh.', true);
+        console.error('Unable to persist terminal checkpoint.', error);
+      }
+    } finally {
+      // Keep the live terminal usable even when browser persistence is denied.
+      // In that fallback case only its persisted history cannot be restored.
+      this.bridge.acknowledgeCheckpoint(checkpoint.sessionId, checkpoint.outputSeq);
+    }
+  }
+
+  private readonly handlePageHide = (): void => {
+    this.persistResumeState();
+    this.checkpointAllTerminals();
+  };
+
+  private readonly handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') {
+      this.persistResumeState();
+      this.checkpointAllTerminals();
+    }
+  };
+
+  private checkpointAllTerminals(): void {
+    this.terminals.forEach(terminal => {
+      void terminal.checkpointNow().catch(error => {
+        console.error('Unable to checkpoint terminal before the page was hidden.', error);
+      });
+    });
+  }
+
+  private persistResumeState(): void {
+    if (!this.resumeStore || this.restoringResumeState) {
+      return;
+    }
+
+    const workspaces: ResumeWorkspaceRecord[] = this.workspaces.map(workspace => ({
+      id: workspace.id,
+      name: workspace.name,
+      panes: [...workspace.panes.values()].map(pane => ({
+        id: pane.id,
+        activeSessionId: pane.activeSessionId,
+        tabs: pane.tabs.map(tab => ({
+          sessionId: tab.sessionId,
+          title: tab.title,
+          processInfo: tab.processInfo
+        }))
+      })),
+      root: workspace.root ? structuredClone(workspace.root) : undefined,
+      focusedPaneId: workspace.focusedPaneId
+    }));
+    this.resumeStore.saveWorkspace({
+      activeWorkspaceId: this.activeWorkspaceId,
+      nextWorkspaceNumber: this.nextWorkspaceNumber,
+      workspaces
+    });
   }
 
   private readonly handleKeyboard = (event: KeyboardEvent): void => {
@@ -607,6 +848,7 @@ export class Workspace implements TerminalCallbacks {
     this.peekList.replaceChildren(peekFragment);
     this.workspaceIndicator.replaceChildren(indicatorFragment);
     this.revealActiveWorkspaceIndicator();
+    this.persistResumeState();
   }
 
   private updateSidebarSelection(): void {
@@ -976,6 +1218,7 @@ export class Workspace implements TerminalCallbacks {
       this.focusSession(session.sessionId);
       this.setStatus('');
     }
+    this.persistResumeState();
   }
 
   private createTerminalTab(session: SessionCreated): TerminalTabState {
@@ -987,7 +1230,14 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private addTerminal(session: SessionCreated): void {
-    const terminal = new TerminalController(
+    const terminal = this.createTerminalController(session);
+    this.closedSessionIds.delete(session.sessionId);
+    this.terminals.set(session.sessionId, terminal);
+    this.drainEarlyOutput(session.sessionId, terminal);
+  }
+
+  private createTerminalController(session: SessionCreated): TerminalController {
+    return new TerminalController(
       session,
       this.bridge,
       this,
@@ -995,15 +1245,15 @@ export class Workspace implements TerminalCallbacks {
       this.settings.theme,
       this.settings.cursor
     );
-    this.closedSessionIds.delete(session.sessionId);
-    this.terminals.set(session.sessionId, terminal);
+  }
 
-    const pending = this.earlyOutput.get(session.sessionId);
+  private drainEarlyOutput(sessionId: string, terminal: TerminalController): void {
+    const pending = this.earlyOutput.get(sessionId);
     if (pending) {
       pending.forEach(({ data, outputSeq }) => {
-        terminal.write(data, () => this.bridge.acknowledgeOutput(session.sessionId, outputSeq));
+        terminal.writeOutput(data, outputSeq);
       });
-      this.earlyOutput.delete(session.sessionId);
+      this.earlyOutput.delete(sessionId);
     }
   }
 
@@ -1044,7 +1294,7 @@ export class Workspace implements TerminalCallbacks {
     const outputSeq = this.payloadNumber(event, 'outputSeq');
     const terminal = this.terminals.get(event.sessionId);
     if (terminal) {
-      terminal.write(data, () => this.bridge.acknowledgeOutput(event.sessionId!, outputSeq));
+      terminal.writeOutput(data, outputSeq);
     } else {
       const pending = this.earlyOutput.get(event.sessionId) ?? [];
       pending.push({ data, outputSeq });
@@ -1090,6 +1340,7 @@ export class Workspace implements TerminalCallbacks {
     for (const terminal of this.terminals.values()) {
       terminal.setVisible(terminal.element.isConnected);
     }
+    this.persistResumeState();
   }
 
   private terminalSizeFor(pane: PaneState | undefined): { cols: number; rows: number } {
@@ -1146,6 +1397,7 @@ export class Workspace implements TerminalCallbacks {
       }
       divider.classList.remove('dragging');
       this.fitVisibleTerminals();
+      this.persistResumeState();
     };
     divider.addEventListener('pointerup', finishDrag);
     divider.addEventListener('pointercancel', finishDrag);
@@ -1512,6 +1764,7 @@ export class Workspace implements TerminalCallbacks {
             this.focusSession(pane.activeSessionId);
           }
         }
+        this.persistResumeState();
         return;
       }
 
@@ -1540,6 +1793,7 @@ export class Workspace implements TerminalCallbacks {
           this.focusSession(focused.activeSessionId);
         }
       }
+      this.persistResumeState();
     });
   }
 
@@ -1582,6 +1836,7 @@ export class Workspace implements TerminalCallbacks {
 
     this.updateMobileInputToolbar();
     this.syncWindowTitle();
+    this.persistResumeState();
   }
 
   private readonly handleMobileToolbarPointerDown = (event: PointerEvent): void => {

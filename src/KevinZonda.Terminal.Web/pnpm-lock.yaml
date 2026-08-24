@@ -14,6 +14,9 @@ importers:
       '@xterm/addon-ligatures':
         specifier: 0.11.0-beta.299
         version: 0.11.0-beta.299(@xterm/xterm@6.1.0-beta.302)
+      '@xterm/addon-serialize':
+        specifier: 0.15.0-beta.300
+        version: 0.15.0-beta.300(@xterm/xterm@6.1.0-beta.302)
       '@xterm/addon-web-links':
         specifier: 0.13.0-beta.299
         version: 0.13.0-beta.299(@xterm/xterm@6.1.0-beta.302)
@@ -265,6 +268,11 @@ packages:
     engines: {node: '>8.0.0'}
     peerDependencies:
       '@xterm/xterm': ^6.1.0-beta.301
+
+  '@xterm/addon-serialize@0.15.0-beta.300':
+    resolution: {integrity: sha512-OCcnMMOCP+p5pIuXIro+u+wfNkSD8J2CZUqmyfTULxgs7jc+vyDL6UiaKmbs2q6MUcq4F9P5Oju3J8d4SEKOmQ==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.303
 
   '@xterm/addon-web-links@0.13.0-beta.299':
     resolution: {integrity: sha512-br9eKXtyRVcYelnmnjgZChlMTV+ut0gnwIVSCabxDw1zCe247R7bIgGeWOz9dYmrfA61JM4FdfjLWhdsKydXzg==}
@@ -576,6 +584,10 @@ snapshots:
       '@xterm/xterm': 6.1.0-beta.302
       lru-cache: 11.5.2
       opentype.js: 2.0.0
+
+  '@xterm/addon-serialize@0.15.0-beta.300(@xterm/xterm@6.1.0-beta.302)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.302
 
   '@xterm/addon-web-links@0.13.0-beta.299(@xterm/xterm@6.1.0-beta.302)':
     dependencies:

@@ -66,7 +66,9 @@ dotnet run --project src\KevinZonda.Terminal.Server -- `
 ```
 
 每个浏览器页面拥有独立的 Workspace、ConPTY 和 Shell。WebSocket 断开后，页面会按指数退避自动重连，
-并恢复原来的 ConPTY、Shell PID 和未确认输出；断开的 Runtime 默认保留 30 分钟。可通过
+并恢复原来的 ConPTY、Shell PID 和未确认输出。刷新当前页面时，还会恢复 Workspace、Pane、Tab、
+活动项以及终端滚屏历史，并继续使用刷新前的 Shell；普通的新页面仍会创建独立 Runtime。
+断开的 Runtime 默认保留 30 分钟。可通过
 `--runtime-retention-minutes` 调整保留时间。
 当前 Server 按本地可信网络场景实现，不包含认证或 TLS。
 
