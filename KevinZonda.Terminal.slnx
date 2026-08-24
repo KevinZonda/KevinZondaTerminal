@@ -1,5 +1,8 @@
 <Solution>
   <Project Path="src/KevinZonda.AgentUsageMonitor/KevinZonda.AgentUsageMonitor.csproj" />
+  <Project Path="src/KevinZonda.Terminal.Core/KevinZonda.Terminal.Core.csproj" />
+  <Project Path="src/KevinZonda.Terminal.WebAssets/KevinZonda.Terminal.WebAssets.csproj" />
+  <Project Path="src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.csproj" />
   <Project Path="src/KevinZonda.Terminal/KevinZonda.Terminal.csproj" />
   <Project Path="tests/KevinZonda.AgentUsageMonitor.Tests/KevinZonda.AgentUsageMonitor.Tests.csproj" />
 </Solution>

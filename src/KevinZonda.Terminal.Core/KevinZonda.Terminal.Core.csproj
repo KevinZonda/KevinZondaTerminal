@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>KevinZonda.Terminal</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KevinZonda.AgentUsageMonitor\KevinZonda.AgentUsageMonitor.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\KevinZonda.Terminal\Configuration\**\*.cs" Link="Configuration\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\KevinZonda.Terminal\Interop\**\*.cs" Link="Interop\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\KevinZonda.Terminal\Messaging\BridgeMessage.cs" Link="Messaging\BridgeMessage.cs" />
+    <Compile Include="..\KevinZonda.Terminal\Monitoring\**\*.cs" Link="Monitoring\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\KevinZonda.Terminal\Terminal\**\*.cs" Link="Terminal\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\KevinZonda.Terminal\Usage\**\*.cs" Link="Usage\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>KevinZonda.Terminal</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>kterm-server</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.exe')">
+    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.exe">
+      <LogicalName>KevinZonda.Terminal.Binaries/OpenConsole.exe</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.Enhanced.exe')">
+    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.Enhanced.exe">
+      <LogicalName>KevinZonda.Terminal.Binaries/OpenConsole.Enhanced.exe</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

@@ -1,8 +1,8 @@
 using System.Reflection;
 
-namespace KevinZonda.Terminal;
+namespace KevinZonda.Terminal.Web;
 
-internal static class EmbeddedWebAssets
+public static class EmbeddedWebAssets
 {
     private const string ResourcePrefix = "KevinZonda.Terminal.WebAssets/";
 
@@ -14,7 +14,7 @@ internal static class EmbeddedWebAssets
             name => name[ResourcePrefix.Length..].Replace('\\', '/'),
             StringComparer.Ordinal);
 
-    internal static bool TryOpen(string requestPath, out Stream? content, out string contentType)
+    public static bool TryOpen(string requestPath, out Stream? content, out string contentType)
     {
         var path = requestPath.TrimStart('/');
         if (path.Length == 0)
@@ -34,7 +34,7 @@ internal static class EmbeddedWebAssets
         return content is not null;
     }
 
-    internal static bool IsImmutable(string requestPath) =>
+    public static bool IsImmutable(string requestPath) =>
         requestPath.TrimStart('/').StartsWith("assets/", StringComparison.Ordinal);
 
     private static string GetContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch

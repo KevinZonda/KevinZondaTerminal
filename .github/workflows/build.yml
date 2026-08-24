@@ -1,4 +1,4 @@
-name: Build Windows executable
+name: Build Windows executables
 
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
 
       - name: Restore .NET dependencies
         run: >-
-          dotnet restore src/KevinZonda.Terminal/KevinZonda.Terminal.csproj
+          dotnet restore KevinZonda.Terminal.slnx
           --runtime win-x64
           -p:PublishReadyToRun=true
           --nologo
@@ -55,29 +55,46 @@ jobs:
       - name: Verify C# formatting
         run: dotnet format KevinZonda.Terminal.slnx --verify-no-changes --no-restore
 
-      - name: Publish executable
+      - name: Publish desktop executable
         run: >-
           dotnet publish src/KevinZonda.Terminal/KevinZonda.Terminal.csproj
           --configuration Release
           --runtime win-x64
           --self-contained false
           --no-restore
-          --output artifacts/publish
+          --output artifacts/publish/desktop
           -p:PublishReadyToRun=true
           -p:PublishSingleFile=true
           --nologo
 
-      - name: Verify published executable
+      - name: Publish server executable
+        run: >-
+          dotnet publish src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained false
+          --no-restore
+          --output artifacts/publish/server
+          -p:PublishReadyToRun=true
+          -p:PublishSingleFile=true
+          --nologo
+
+      - name: Verify published executables
         shell: pwsh
         run: |
-          $executable = 'artifacts/publish/KevinZonda.Terminal.exe'
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            throw "Published executable was not found at $executable."
+          $executables = @(
+            'artifacts/publish/desktop/KevinZonda.Terminal.exe',
+            'artifacts/publish/server/kterm-server.exe'
+          )
+          foreach ($executable in $executables) {
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+              throw "Published executable was not found at $executable."
+            }
+            Get-Item -LiteralPath $executable |
+              Select-Object FullName, Length, LastWriteTime
           }
-          Get-Item -LiteralPath $executable |
-            Select-Object FullName, Length, LastWriteTime
 
-      - name: Package executable
+      - name: Package executables
         id: package
         shell: pwsh
         run: |
@@ -86,7 +103,10 @@ jobs:
           $archiveName = "KevinZonda-Terminal-win-x64-$timestamp-$shortSha.zip"
           $archivePath = "artifacts/$archiveName"
           Compress-Archive `
-            -LiteralPath 'artifacts/publish/KevinZonda.Terminal.exe' `
+            -LiteralPath @(
+              'artifacts/publish/desktop/KevinZonda.Terminal.exe',
+              'artifacts/publish/server/kterm-server.exe'
+            ) `
             -DestinationPath $archivePath `
             -CompressionLevel Optimal
           "archive-path=$archivePath" >> $env:GITHUB_OUTPUT

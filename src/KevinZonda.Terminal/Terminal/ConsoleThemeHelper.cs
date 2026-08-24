@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Interop;
@@ -115,7 +116,15 @@ internal static class ConsoleThemeHelper
 
     private static uint ToColorRef(string htmlColor)
     {
-        var color = ColorTranslator.FromHtml(htmlColor);
-        return color.R | ((uint)color.G << 8) | ((uint)color.B << 16);
+        if (htmlColor.Length != 7 || htmlColor[0] != '#' ||
+            !uint.TryParse(htmlColor.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+        {
+            throw new FormatException($"Invalid terminal color '{htmlColor}'.");
+        }
+
+        var red = (rgb >> 16) & 0xff;
+        var green = (rgb >> 8) & 0xff;
+        var blue = rgb & 0xff;
+        return red | (green << 8) | (blue << 16);
     }
 }

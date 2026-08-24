@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <WebProjectDir>$(MSBuildProjectDirectory)\..\KevinZonda.Terminal.Web</WebProjectDir>
+  </PropertyGroup>
+
+  <Target Name="BuildWebAssets" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(WebProjectDir)" Command="pnpm install --frozen-lockfile" Condition="!Exists('$(WebProjectDir)\node_modules\.pnpm\lock.yaml')" />
+    <Exec WorkingDirectory="$(WebProjectDir)" Command="pnpm run build" />
+    <ItemGroup>
+      <_WebAsset Include="$(WebProjectDir)\dist\**\*" />
+      <EmbeddedResource Include="@(_WebAsset)">
+        <LogicalName>KevinZonda.Terminal.WebAssets/%(_WebAsset.RecursiveDir)%(_WebAsset.Filename)%(_WebAsset.Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+</Project>

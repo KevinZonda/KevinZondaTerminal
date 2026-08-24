@@ -4,6 +4,7 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repositoryRoot 'src\KevinZonda.Terminal\KevinZonda.Terminal.csproj'
 $executable = Join-Path $repositoryRoot 'src\KevinZonda.Terminal\bin\Debug\net10.0-windows\KevinZonda.Terminal.exe'
 $environmentProbe = Join-Path ([IO.Path]::GetTempPath()) "kterm-smoke-$([Guid]::NewGuid().ToString('N')).txt"
+$completionProbe = Join-Path ([IO.Path]::GetTempPath()) "kterm-smoke-complete-$([Guid]::NewGuid().ToString('N')).txt"
 
 dotnet build $project --nologo
 if ($LASTEXITCODE -ne 0) {
@@ -12,14 +13,17 @@ if ($LASTEXITCODE -ne 0) {
 
 $env:KTERM_SMOKE_TEST = '1'
 $env:KTERM_SMOKE_OUTPUT = $environmentProbe
+$env:KTERM_SMOKE_COMPLETE = $completionProbe
 try {
     $application = Start-Process -FilePath $executable -WorkingDirectory (Split-Path $executable) -PassThru
 }
 finally {
     Remove-Item Env:\KTERM_SMOKE_TEST -ErrorAction SilentlyContinue
     Remove-Item Env:\KTERM_SMOKE_OUTPUT -ErrorAction SilentlyContinue
+    Remove-Item Env:\KTERM_SMOKE_COMPLETE -ErrorAction SilentlyContinue
 }
 
+$uiProcess = $null
 $children = @()
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -30,22 +34,58 @@ try {
             throw "KevinZonda Terminal exited during smoke initialization with code $($application.ExitCode)."
         }
 
-        $children = @(Get-CimInstance Win32_Process | Where-Object ParentProcessId -eq $application.Id)
-        $shells = @($children | Where-Object Name -in @('powershell.exe', 'pwsh.exe', 'cmd.exe'))
-        $conhosts = @($children | Where-Object Name -eq 'conhost.exe')
+        if ($null -eq $uiProcess) {
+            $uiChild = Get-CimInstance Win32_Process |
+                Where-Object {
+                    $_.ParentProcessId -eq $application.Id -and
+                    $_.CommandLine -like '*--kterm-ui-child*'
+                } |
+                Select-Object -First 1
+            if ($null -ne $uiChild) {
+                $uiProcess = Get-Process -Id $uiChild.ProcessId
+            }
+        }
+
+        if ($null -eq $uiProcess) {
+            continue
+        }
+        $uiProcess.Refresh()
+        if ($uiProcess.HasExited) {
+            throw "KevinZonda Terminal UI exited during smoke initialization with code $($uiProcess.ExitCode)."
+        }
+
+        $children = @(Get-CimInstance Win32_Process | Where-Object ParentProcessId -eq $uiProcess.Id)
+        $terminalHosts = @(
+            $children |
+                Where-Object Name -in @('conhost.exe', 'OpenConsole.exe', 'OpenConsole.Enhanced.exe')
+        )
+        $shells = @(
+            $children |
+                Where-Object Name -notin @(
+                    'conhost.exe',
+                    'OpenConsole.exe',
+                    'OpenConsole.Enhanced.exe',
+                    'msedgewebview2.exe',
+                    'KevinZonda.Terminal.exe'
+                )
+        )
     }
     while (($shells.Count -lt 5 -or
-        $conhosts.Count -lt 5 -or
-        -not (Test-Path -LiteralPath $environmentProbe)) -and [DateTime]::UtcNow -lt $deadline)
+        $terminalHosts.Count -lt 5 -or
+        -not (Test-Path -LiteralPath $environmentProbe) -or
+        -not (Test-Path -LiteralPath $completionProbe)) -and [DateTime]::UtcNow -lt $deadline)
 
     if ($shells.Count -ne 5) {
         throw "Expected 5 independent Shell processes, found $($shells.Count)."
     }
-    if ($conhosts.Count -ne 5) {
-        throw "Expected 5 ConPTY conhost processes, found $($conhosts.Count)."
+    if ($terminalHosts.Count -ne 5) {
+        throw "Expected 5 ConPTY host processes, found $($terminalHosts.Count)."
     }
     if (-not (Test-Path -LiteralPath $environmentProbe)) {
         throw 'The shell environment probe did not complete.'
+    }
+    if (-not (Test-Path -LiteralPath $completionProbe)) {
+        throw 'The desktop automation sequence did not complete.'
     }
 
     $environmentValues = @(Get-Content -LiteralPath $environmentProbe)
@@ -57,12 +97,16 @@ try {
 }
 finally {
     $childProcessIds = @($children.ProcessId)
-    if (-not $application.HasExited) {
-        $null = $application.CloseMainWindow()
-        if (-not $application.WaitForExit(12000)) {
-            $application.Kill()
+    if ($null -ne $uiProcess -and -not $uiProcess.HasExited) {
+        $null = $uiProcess.CloseMainWindow()
+        if (-not $uiProcess.WaitForExit(12000)) {
+            Stop-Process -Id $uiProcess.Id
             throw 'KevinZonda Terminal did not close cleanly within 12 seconds.'
         }
+    }
+    if (-not $application.HasExited -and -not $application.WaitForExit(5000)) {
+        Stop-Process -Id $application.Id
+        throw 'KevinZonda Terminal supervisor did not exit after its UI closed.'
     }
 
     Start-Sleep -Milliseconds 800
@@ -72,6 +116,7 @@ finally {
     }
 
     [IO.File]::Delete($environmentProbe)
+    [IO.File]::Delete($completionProbe)
 }
 
 Write-Output 'KevinZonda Terminal smoke test passed: xterm-256color/truecolor, 2 tabs, 2x2 active layout, 5 Shells, 5 ConPTY hosts, 0 leaked child processes.'

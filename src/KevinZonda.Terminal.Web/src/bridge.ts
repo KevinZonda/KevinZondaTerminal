@@ -140,12 +140,41 @@ interface PendingRequest {
 export class NativeBridge {
   private readonly handlers = new Map<string, Set<BridgeEventHandler>>();
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly webView = window.chrome?.webview;
+  private readonly socket?: WebSocket;
+  private readonly connectionReady: Promise<void>;
+  private socketClosed = false;
 
   public constructor() {
-    window.chrome.webview.addEventListener('message', this.handleMessage);
+    if (this.webView) {
+      this.webView.addEventListener('message', this.handleMessage);
+      this.connectionReady = Promise.resolve();
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    this.socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    this.connectionReady = new Promise<void>((resolve, reject) => {
+      this.socket!.addEventListener('open', () => resolve(), { once: true });
+      this.socket!.addEventListener('error', () => reject(new Error('Unable to connect to kterm-server.')), {
+        once: true
+      });
+    });
+    this.socket.addEventListener('message', event => {
+      if (typeof event.data !== 'string') {
+        return;
+      }
+      try {
+        this.acceptMessage(JSON.parse(event.data));
+      } catch {
+        // Ignore malformed server messages; valid bridge traffic is JSON.
+      }
+    });
+    this.socket.addEventListener('close', () => this.handleSocketClosed());
   }
 
   public async ready(): Promise<AppInitialState> {
+    await this.connectionReady;
     const event = await this.request('app.ready', {});
     return {
       settings: this.settingsFrom(event),
@@ -184,15 +213,25 @@ export class NativeBridge {
   }
 
   public openSettings(): void {
-    this.send('window.settings', {});
+    if (this.webView) {
+      this.send('window.settings', {});
+    }
   }
 
   public openNewInstance(): void {
-    this.send('window.newInstance', {});
+    if (this.webView) {
+      this.send('window.newInstance', {});
+      return;
+    }
+    window.open(window.location.href, '_blank', 'noopener');
   }
 
   public openExternal(uri: string): void {
-    this.send('window.openExternal', { uri });
+    if (this.webView) {
+      this.send('window.openExternal', { uri });
+      return;
+    }
+    window.open(uri, '_blank', 'noopener');
   }
 
   public async saveFontSize(size: number): Promise<AppSettings> {
@@ -387,10 +426,17 @@ export class NativeBridge {
   }
 
   public writeClipboard(text: string): void {
-    this.send('clipboard.write', { text });
+    if (this.webView) {
+      this.send('clipboard.write', { text });
+      return;
+    }
+    void navigator.clipboard.writeText(text);
   }
 
   public async readClipboard(): Promise<string> {
+    if (!this.webView) {
+      return navigator.clipboard.readText();
+    }
     const event = await this.request('clipboard.read', {});
     return this.payloadString(event, 'text');
   }
@@ -403,11 +449,15 @@ export class NativeBridge {
   }
 
   private readonly handleMessage = (messageEvent: MessageEvent<unknown>): void => {
-    if (!this.isBridgeEvent(messageEvent.data)) {
+    this.acceptMessage(messageEvent.data);
+  };
+
+  private acceptMessage(value: unknown): void {
+    if (!this.isBridgeEvent(value)) {
       return;
     }
 
-    const event = messageEvent.data;
+    const event = value;
     if (event.requestId) {
       const request = this.pending.get(event.requestId);
       if (request) {
@@ -421,7 +471,21 @@ export class NativeBridge {
     }
 
     this.handlers.get(event.type)?.forEach(handler => handler(event));
-  };
+  }
+
+  private handleSocketClosed(): void {
+    this.socketClosed = true;
+    const error = new Error('The connection to kterm-server was closed.');
+    for (const request of this.pending.values()) {
+      request.reject(error);
+    }
+    this.pending.clear();
+    this.handlers.get('app.runtimeFailed')?.forEach(handler => handler({
+      version: 1,
+      type: 'app.runtimeFailed',
+      payload: { kind: 'server-connection' }
+    }));
+  }
 
   private request(type: string, payload: Record<string, unknown>): Promise<BridgeEvent> {
     const requestId = crypto.randomUUID();
@@ -443,13 +507,21 @@ export class NativeBridge {
     sessionId?: string,
     requestId?: string
   ): void {
-    window.chrome.webview.postMessage({
+    const event: BridgeEvent = {
       version: 1,
       type,
       requestId,
       sessionId,
       payload
-    });
+    };
+    if (this.webView) {
+      this.webView.postMessage(event);
+      return;
+    }
+    if (!this.socket || this.socketClosed || this.socket.readyState !== WebSocket.OPEN) {
+      throw new Error('The connection to kterm-server is not open.');
+    }
+    this.socket.send(JSON.stringify(event));
   }
 
   private isBridgeEvent(value: unknown): value is BridgeEvent {

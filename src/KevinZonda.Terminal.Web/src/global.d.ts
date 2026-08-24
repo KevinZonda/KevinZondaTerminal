@@ -5,7 +5,7 @@ interface WebViewHost {
 }
 
 interface Window {
-  chrome: {
+  chrome?: {
     webview: WebViewHost;
   };
 }

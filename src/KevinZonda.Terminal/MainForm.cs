@@ -8,6 +8,7 @@ using KevinZonda.Terminal.Messaging;
 using KevinZonda.Terminal.Monitoring;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
+using KevinZonda.Terminal.Web;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -227,7 +228,7 @@ internal sealed class MainForm : Form
         }
 
         _webView.CoreWebView2.NavigationCompleted -= HandleDebugNavigationCompleted;
-        await Task.Delay(1_500);
+        await Task.Delay(4_000);
         await DispatchDebugEnvironmentProbe();
         await DispatchDebugShortcut("KeyT", "t", 0x54);
         await Task.Delay(500);
@@ -249,6 +250,8 @@ internal sealed class MainForm : Form
             "Input.insertText",
             JsonSerializer.Serialize(new { text = "echo KTERM_SMOKE" }));
         await DispatchDebugShortcut("Enter", "\r", 0x0D, modifiers: 0);
+        await Task.Delay(500);
+        WriteDebugSmokeCompletion();
     }
 
     private async Task DispatchDebugEnvironmentProbe()
@@ -259,16 +262,43 @@ internal sealed class MainForm : Form
             return;
         }
 
-        await DispatchDebugClick(250, 250);
-        var escapedPath = outputPath.Replace("'", "''", StringComparison.Ordinal);
-        await _webView.CoreWebView2.CallDevToolsProtocolMethodAsync(
-            "Input.insertText",
-            JsonSerializer.Serialize(new
-            {
-                text = $"@($env:TERM,$env:COLORTERM) | Set-Content -LiteralPath '{escapedPath}'"
-            }));
-        await DispatchDebugShortcut("Enter", "\r", 0x0D, modifiers: 0);
-        await Task.Delay(250);
+        var shell = ShellProfileCatalog.Resolve(_settings.Shell);
+        var executableName = Path.GetFileNameWithoutExtension(shell.ExecutablePath);
+        var command = executableName.ToLowerInvariant() switch
+        {
+            "powershell" or "pwsh" =>
+                $"@($env:TERM,$env:COLORTERM) | Set-Content -LiteralPath '{outputPath.Replace("'", "''", StringComparison.Ordinal)}'",
+            "cmd" =>
+                $"(echo %TERM%& echo %COLORTERM%) > \"{outputPath.Replace("\"", "\"\"", StringComparison.Ordinal)}\"",
+            _ =>
+                $"printf '%s\\n%s\\n' \"$TERM\" \"$COLORTERM\" > '{ToMsysPath(outputPath).Replace("'", "'\\''", StringComparison.Ordinal)}'"
+        };
+        for (var attempt = 0; attempt < 3 && !File.Exists(outputPath); attempt++)
+        {
+            await DispatchDebugClick(250, 250);
+            await _webView.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "Input.insertText",
+                JsonSerializer.Serialize(new { text = command }));
+            await DispatchDebugShortcut("Enter", "\r", 0x0D, modifiers: 0);
+            await Task.Delay(750);
+        }
+    }
+
+    private static string ToMsysPath(string path)
+    {
+        var normalized = Path.GetFullPath(path).Replace('\\', '/');
+        return normalized.Length >= 3 && normalized[1] == ':' && normalized[2] == '/'
+            ? $"/{char.ToLowerInvariant(normalized[0])}{normalized[2..]}"
+            : normalized;
+    }
+
+    private static void WriteDebugSmokeCompletion()
+    {
+        var completionPath = Environment.GetEnvironmentVariable("KTERM_SMOKE_COMPLETE");
+        if (!string.IsNullOrWhiteSpace(completionPath))
+        {
+            File.WriteAllText(completionPath, "complete");
+        }
     }
 
     private async Task DispatchDebugShortcut(string code, string key, int virtualKey, int modifiers = 1)
