@@ -79,12 +79,25 @@ jobs:
           -p:PublishSingleFile=true
           --nologo
 
+      - name: Publish Server Launcher executable
+        run: >-
+          dotnet publish src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.Server.Launcher.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained false
+          --no-restore
+          --output artifacts/publish/launcher
+          -p:PublishReadyToRun=true
+          -p:PublishSingleFile=true
+          --nologo
+
       - name: Verify published executables
         shell: pwsh
         run: |
           $executables = @(
             'artifacts/publish/desktop/KevinZonda.Terminal.exe',
-            'artifacts/publish/server/kterm-server.exe'
+            'artifacts/publish/server/kterm-server.exe',
+            'artifacts/publish/launcher/kterm-server-launcher.exe'
           )
           foreach ($executable in $executables) {
             if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
@@ -105,7 +118,8 @@ jobs:
           Compress-Archive `
             -LiteralPath @(
               'artifacts/publish/desktop/KevinZonda.Terminal.exe',
-              'artifacts/publish/server/kterm-server.exe'
+              'artifacts/publish/server/kterm-server.exe',
+              'artifacts/publish/launcher/kterm-server-launcher.exe'
             ) `
             -DestinationPath $archivePath `
             -CompressionLevel Optimal

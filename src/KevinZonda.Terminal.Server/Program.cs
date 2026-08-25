@@ -18,7 +18,16 @@ if (ConsoleThemeHelper.TryRun(args, out var helperExitCode))
     return;
 }
 
-var builder = WebApplication.CreateBuilder(args);
+var launcherControlEnabled = args.Any(argument =>
+    string.Equals(argument, "--launcher-control", StringComparison.Ordinal));
+var serverArgs = launcherControlEnabled
+    ? args.Where(argument => !string.Equals(
+        argument,
+        "--launcher-control",
+        StringComparison.Ordinal)).ToArray()
+    : args;
+
+var builder = WebApplication.CreateBuilder(serverArgs);
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]))
 {
     builder.WebHost.UseUrls("http://0.0.0.0:7132");
@@ -130,6 +139,10 @@ else if (serverAuthentication.Enabled)
     app.Logger.LogInformation(
         "Password authentication is enabled using {AuthenticationFile}",
         serverAuthentication.ConfigurationPath);
+}
+if (launcherControlEnabled)
+{
+    _ = LauncherControl.RunAsync(app.Lifetime, app.Logger);
 }
 await app.RunAsync();
 

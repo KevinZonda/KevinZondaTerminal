@@ -55,6 +55,17 @@ dotnet run --project src\KevinZonda.Terminal.Server\KevinZonda.Terminal.Server.c
 server.cmd --urls http://0.0.0.0:8080
 ```
 
+也可以使用 `kterm-server-launcher.exe` 在系统托盘管理 Server。Launcher 默认自动启动同目录下的
+`kterm-server.exe`，右键托盘图标可选择 `Start`、`Stop`、`Logs` 和 `Exit`；双击图标也会打开日志窗口。
+传给 Launcher 的命令行参数会继续传给 Server，例如：
+
+```powershell
+kterm-server-launcher --urls http://0.0.0.0:8080 --auth-mode required
+```
+
+`Stop` 和 `Exit` 会先请求 Server 优雅关闭；如果 Server 无响应，Launcher 会清理其完整进程树。
+Launcher 为单实例程序，关闭日志窗口只会隐藏窗口，不会停止 Server。
+
 然后在本机打开 `http://localhost:7132`，或在远程设备打开
 `http://<KTerm 所在电脑的 IP>:7132`。可通过 `--urls` 修改监听地址，通过
 `--working-directory` 指定新 Shell 的启动目录：
@@ -118,7 +129,7 @@ dotnet publish src\KevinZonda.Terminal\KevinZonda.Terminal.csproj -c Release -r 
 `Build Windows executable`，都会在 Windows runner 上构建单文件 win-x64 版本。
 构建成功后，从对应 workflow run 的 **Artifacts** 区下载
 `KevinZonda-Terminal-win-x64-YYYYMMDD-HHmmssZ-<short-hash>.zip`，其中包含
-`KevinZonda.Terminal.exe` 和 `kterm-server.exe`。文件名中的时间戳使用 UTC，hash 为触发构建的 commit
+`KevinZonda.Terminal.exe`、`kterm-server.exe` 和 `kterm-server-launcher.exe`。文件名中的时间戳使用 UTC，hash 为触发构建的 commit
 SHA 前 7 位。
 Artifact 保留 30 天；程序运行时需要 .NET 10 Desktop Runtime 和 WebView2 Runtime。
 
