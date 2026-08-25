@@ -9,6 +9,7 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $solution = Join-Path $repositoryRoot 'KevinZonda.Terminal.slnx'
 $serverExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server\bin\$Configuration\net10.0-windows\kterm-server.exe"
 $launcherExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server.Launcher\bin\$Configuration\net10.0-windows\kterm-server-launcher.exe"
+$serverSmoke = Join-Path $repositoryRoot 'scripts\test-kterm-server.mjs'
 
 function Get-FreeLoopbackUrl {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -44,54 +45,67 @@ function Wait-ForHealth([string]$Url, [Diagnostics.Process]$Owner) {
     }
 }
 
+function Test-ServerPipeControl {
+    $pipeName = "kterm-server-launcher-smoke-$([Guid]::NewGuid().ToString('N'))"
+    $pipeOptions = [IO.Pipes.PipeOptions]::Asynchronous -bor [IO.Pipes.PipeOptions]::CurrentUserOnly
+    $pipe = [IO.Pipes.NamedPipeServerStream]::new(
+        $pipeName,
+        [IO.Pipes.PipeDirection]::InOut,
+        1,
+        [IO.Pipes.PipeTransmissionMode]::Byte,
+        $pipeOptions)
+    $server = $null
+    try {
+        $connection = $pipe.WaitForConnectionAsync()
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $serverExecutable
+        $startInfo.Arguments = "--launcher-pipe $pipeName --urls $(Get-FreeLoopbackUrl) --auth-mode disabled"
+        $startInfo.UseShellExecute = $true
+        $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+        $startInfo.WorkingDirectory = $repositoryRoot
+        $server = [Diagnostics.Process]::Start($startInfo)
+        if (-not $connection.Wait(15000)) {
+            throw 'Server did not connect to its Launcher pipe within 15 seconds.'
+        }
+
+        $reader = [IO.StreamReader]::new($pipe, [Text.Encoding]::UTF8, $false, 1024, $true)
+        $logs = $reader.ReadToEndAsync()
+        $writer = [IO.StreamWriter]::new(
+            $pipe,
+            [Text.UTF8Encoding]::new($false),
+            1024,
+            $true)
+        $writer.AutoFlush = $true
+        $writer.WriteLine('{"type":"shutdown"}')
+        if (-not $server.WaitForExit(15000)) {
+            throw 'Server did not honor the Launcher pipe shutdown command within 15 seconds.'
+        }
+        $logText = $logs.GetAwaiter().GetResult()
+        if ($server.ExitCode -ne 0) {
+            throw "Launcher pipe-controlled Server exited with code $($server.ExitCode).`n$logText"
+        }
+        if (-not $logText.Contains('Launcher requested server shutdown.')) {
+            throw 'Server logs did not reach the Launcher pipe.'
+        }
+    }
+    finally {
+        if ($null -ne $server -and -not $server.HasExited) {
+            Stop-Process -Id $server.Id
+        }
+        $pipe.Dispose()
+    }
+}
+
 dotnet build $solution -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Launcher solution build failed with exit code $LASTEXITCODE."
 }
+Test-ServerPipeControl
 
-$controlledServer = $null
 $launcher = $null
 $launcherServer = $null
 $previousMutexSuffix = $env:KTERM_LAUNCHER_MUTEX_SUFFIX
 try {
-    $controlUrl = Get-FreeLoopbackUrl
-    $startInfo = [Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $serverExecutable
-    $startInfo.Arguments = "--launcher-control --urls $controlUrl --auth-mode disabled"
-    $startInfo.CreateNoWindow = $true
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardInput = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $controlledServer = [Diagnostics.Process]::new()
-    $controlledServer.StartInfo = $startInfo
-    if (-not $controlledServer.Start()) {
-        throw 'Unable to start the directly controlled Server.'
-    }
-    $standardOutput = $controlledServer.StandardOutput.ReadToEndAsync()
-    $standardError = $controlledServer.StandardError.ReadToEndAsync()
-    try {
-        Wait-ForHealth $controlUrl $controlledServer
-    }
-    catch {
-        $controlledServer.StandardInput.Close()
-        if (-not $controlledServer.WaitForExit(5000)) {
-            Stop-Process -Id $controlledServer.Id
-            $null = $controlledServer.WaitForExit(5000)
-        }
-        throw "$($_.Exception.Message)`n$($standardOutput.Result)`n$($standardError.Result)"
-    }
-    $controlledServer.StandardInput.WriteLine('shutdown')
-    $controlledServer.StandardInput.Flush()
-    if (-not $controlledServer.WaitForExit(10000)) {
-        throw 'Server did not honor the Launcher stdin shutdown command within 10 seconds.'
-    }
-    if ($controlledServer.ExitCode -ne 0) {
-        throw "Launcher-controlled Server exited with code $($controlledServer.ExitCode).`n$($standardOutput.Result)`n$($standardError.Result)"
-    }
-    $controlledServer.Dispose()
-    $controlledServer = $null
-
     $launcherUrl = Get-FreeLoopbackUrl
     $env:KTERM_LAUNCHER_MUTEX_SUFFIX = [Guid]::NewGuid().ToString('N')
     $launcher = Start-Process `
@@ -101,6 +115,11 @@ try {
         -WindowStyle Hidden `
         -PassThru
     Wait-ForHealth $launcherUrl $launcher
+
+    & node $serverSmoke $launcherUrl --shell-io-only
+    if ($LASTEXITCODE -ne 0) {
+        throw "Launcher Shell I/O smoke test failed with exit code $LASTEXITCODE."
+    }
 
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     do {
@@ -133,9 +152,6 @@ try {
     $launcherServer = $null
 }
 finally {
-    if ($null -ne $controlledServer -and -not $controlledServer.HasExited) {
-        Stop-Process -Id $controlledServer.Id
-    }
     if ($null -ne $launcher -and -not $launcher.HasExited) {
         Stop-Process -Id $launcher.Id
     }
@@ -153,4 +169,4 @@ finally {
     }
 }
 
-Write-Output 'kterm-server Launcher smoke test passed: stdin shutdown and Job Object cleanup.'
+Write-Output 'kterm-server Launcher smoke test passed: pipe logs/shutdown, Shell I/O, and Job Object cleanup.'

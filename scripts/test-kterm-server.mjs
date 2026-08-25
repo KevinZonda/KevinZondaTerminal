@@ -1,4 +1,5 @@
 const baseUrl = process.argv[2] ?? 'http://127.0.0.1:7132';
+const shellIoOnly = process.argv.includes('--shell-io-only');
 const socketUrl = new URL('/ws', baseUrl);
 socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:';
 
@@ -104,6 +105,17 @@ await withTimeout((async () => {
       throw new Error(message.payload.message);
     }
   }
+
+  if (shellIoOnly) {
+    send(first.socket, 'session.close', { operationId: 'close-shell-io' }, sessionId, 'close-shell-io');
+    stage = 'closing Shell after I/O validation';
+    do {
+      message = await first.nextMessage();
+    } while (message.type !== 'session.closed');
+    first.socket.close();
+    return;
+  }
+
   send(first.socket, 'session.outputAck', { outputSeq: checkpointOutputSeq }, sessionId);
   send(first.socket, 'session.checkpointAck', { outputSeq: checkpointOutputSeq }, sessionId);
 
@@ -194,4 +206,6 @@ await withTimeout((async () => {
   third.socket.close();
 })(), () => `Timed out testing resumable kterm-server Shell I/O (stage: ${stage}).`);
 
-console.log('kterm-server HTTP, page checkpoint, URL takeover, replay, and Shell identity checks passed.');
+console.log(shellIoOnly
+  ? 'kterm-server HTTP, WebSocket, and Shell input/output checks passed.'
+  : 'kterm-server HTTP, page checkpoint, URL takeover, replay, and Shell identity checks passed.');

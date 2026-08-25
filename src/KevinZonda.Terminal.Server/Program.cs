@@ -18,14 +18,10 @@ if (ConsoleThemeHelper.TryRun(args, out var helperExitCode))
     return;
 }
 
-var launcherControlEnabled = args.Any(argument =>
-    string.Equals(argument, "--launcher-control", StringComparison.Ordinal));
-var serverArgs = launcherControlEnabled
-    ? args.Where(argument => !string.Equals(
-        argument,
-        "--launcher-control",
-        StringComparison.Ordinal)).ToArray()
-    : args;
+var (launcherPipeName, serverArgs) = LauncherPipeConnection.ExtractArguments(args);
+await using var launcherPipe = launcherPipeName is null
+    ? null
+    : await LauncherPipeConnection.ConnectAsync(launcherPipeName);
 
 var builder = WebApplication.CreateBuilder(serverArgs);
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"]))
@@ -140,9 +136,10 @@ else if (serverAuthentication.Enabled)
         "Password authentication is enabled using {AuthenticationFile}",
         serverAuthentication.ConfigurationPath);
 }
-if (launcherControlEnabled)
+if (launcherPipe is not null)
 {
-    _ = LauncherControl.RunAsync(app.Lifetime, app.Logger);
+    app.Lifetime.ApplicationStarted.Register(() =>
+        launcherPipe.StartControl(app.Lifetime, app.Logger));
 }
 await app.RunAsync();
 

@@ -1,11 +1,12 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Text;
+using System.Text.Json;
 
 namespace KevinZonda.Terminal.Server.Launcher;
 
 internal sealed class ServerProcessHost : IDisposable
 {
-    private const string ShutdownCommand = "shutdown";
     private static readonly TimeSpan GracefulShutdownTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ForcedShutdownTimeout = TimeSpan.FromSeconds(5);
     private readonly Lock _gate = new();
@@ -39,14 +40,14 @@ internal sealed class ServerProcessHost : IDisposable
         }
     }
 
-    internal Task StartAsync()
+    internal async Task StartAsync()
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_run is not null)
             {
-                return Task.CompletedTask;
+                return;
             }
         }
 
@@ -57,20 +58,23 @@ internal sealed class ServerProcessHost : IDisposable
                 _serverExecutable);
         }
 
+        var pipeName = $"kterm-server-launcher-{Environment.ProcessId}-{Guid.NewGuid():N}";
+        var pipe = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            maxNumberOfServerInstances: 1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var startInfo = new ProcessStartInfo
         {
-            CreateNoWindow = true,
+            CreateNoWindow = false,
             FileName = _serverExecutable,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            StandardErrorEncoding = Encoding.UTF8,
-            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            StandardOutputEncoding = Encoding.UTF8,
-            UseShellExecute = false,
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
             WorkingDirectory = Path.GetDirectoryName(_serverExecutable) ?? AppContext.BaseDirectory
         };
-        startInfo.ArgumentList.Add("--launcher-control");
+        startInfo.ArgumentList.Add("--launcher-pipe");
+        startInfo.ArgumentList.Add(pipeName);
         foreach (var argument in _serverArguments)
         {
             startInfo.ArgumentList.Add(argument);
@@ -81,33 +85,26 @@ internal sealed class ServerProcessHost : IDisposable
             EnableRaisingEvents = false,
             StartInfo = startInfo
         };
-        process.OutputDataReceived += (_, eventArgs) =>
-        {
-            if (eventArgs.Data is not null)
-            {
-                _logs.Add(LauncherLogSource.StandardOutput, eventArgs.Data);
-            }
-        };
-        process.ErrorDataReceived += (_, eventArgs) =>
-        {
-            if (eventArgs.Data is not null)
-            {
-                _logs.Add(LauncherLogSource.StandardError, eventArgs.Data);
-            }
-        };
-
         var job = ServerProcessJob.Create();
         try
         {
+            using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var connection = pipe.WaitForConnectionAsync(connectTimeout.Token);
             if (!process.Start())
             {
                 throw new InvalidOperationException("kterm-server did not start.");
             }
             job.Assign(process);
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
 
-            var run = new ServerRun(process, job);
+            var processExit = process.WaitForExitAsync();
+            if (await Task.WhenAny(connection, processExit).ConfigureAwait(false) == processExit)
+            {
+                throw new InvalidOperationException(
+                    $"kterm-server exited with code {process.ExitCode} before connecting to the Launcher.");
+            }
+            await connection.ConfigureAwait(false);
+
+            var run = new ServerRun(process, job, pipe);
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
@@ -122,8 +119,8 @@ internal sealed class ServerProcessHost : IDisposable
                 LauncherLogSource.System,
                 $"Started kterm-server (PID {process.Id}).");
             StateChanged?.Invoke();
+            _ = ObservePipeAsync(run);
             _ = ObserveExitAsync(run);
-            return Task.CompletedTask;
         }
         catch
         {
@@ -139,6 +136,7 @@ internal sealed class ServerProcessHost : IDisposable
             }
             process.Dispose();
             job.Dispose();
+            await pipe.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }
@@ -159,10 +157,10 @@ internal sealed class ServerProcessHost : IDisposable
         _logs.Add(LauncherLogSource.System, "Requesting graceful Server shutdown.");
         try
         {
-            await run.Process.StandardInput.WriteLineAsync(ShutdownCommand).ConfigureAwait(false);
-            await run.Process.StandardInput.FlushAsync().ConfigureAwait(false);
+            await run.SendShutdownAsync().ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        catch (Exception exception) when (
+            exception is IOException or InvalidOperationException or ObjectDisposedException)
         {
             _logs.Add(
                 LauncherLogSource.System,
@@ -213,8 +211,7 @@ internal sealed class ServerProcessHost : IDisposable
 
         if (run is not null)
         {
-            run.Job.Dispose();
-            run.Process.Dispose();
+            run.Dispose();
         }
     }
 
@@ -248,8 +245,7 @@ internal sealed class ServerProcessHost : IDisposable
             LauncherLogSource.System,
             $"kterm-server exited with code {exitCode}.");
         run.Exited.TrySetResult(exitCode);
-        run.Process.Dispose();
-        run.Job.Dispose();
+        run.Dispose();
 
         if (isCurrentRun)
         {
@@ -261,12 +257,107 @@ internal sealed class ServerProcessHost : IDisposable
         }
     }
 
-    private sealed class ServerRun(Process process, ServerProcessJob job)
+    private async Task ObservePipeAsync(ServerRun run)
     {
-        internal Process Process { get; } = process;
-        internal ServerProcessJob Job { get; } = job;
+        try
+        {
+            while (true)
+            {
+                var line = await run.Reader.ReadLineAsync().ConfigureAwait(false);
+                if (line is null)
+                {
+                    return;
+                }
+
+                using var message = JsonDocument.Parse(line);
+                if (!message.RootElement.TryGetProperty("type", out var type) ||
+                    !message.RootElement.TryGetProperty("text", out var text))
+                {
+                    continue;
+                }
+                var source = type.GetString() switch
+                {
+                    "stdout" => LauncherLogSource.StandardOutput,
+                    "stderr" => LauncherLogSource.StandardError,
+                    _ => LauncherLogSource.System
+                };
+                _logs.Add(source, text.GetString() ?? string.Empty);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or ObjectDisposedException or JsonException)
+        {
+            lock (_gate)
+            {
+                if (!ReferenceEquals(_run, run) || run.StopRequested)
+                {
+                    return;
+                }
+            }
+            _logs.Add(LauncherLogSource.System, $"Launcher log pipe failed: {exception.Message}");
+        }
+    }
+
+    private sealed class ServerRun : IDisposable
+    {
+        private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private int _disposed;
+
+        internal ServerRun(Process process, ServerProcessJob job, NamedPipeServerStream pipe)
+        {
+            Process = process;
+            Job = job;
+            Pipe = pipe;
+            Reader = new StreamReader(
+                pipe,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: false,
+                leaveOpen: true);
+            Writer = new StreamWriter(
+                pipe,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                leaveOpen: true)
+            {
+                AutoFlush = true
+            };
+        }
+
+        internal Process Process { get; }
+        internal ServerProcessJob Job { get; }
+        internal NamedPipeServerStream Pipe { get; }
+        internal StreamReader Reader { get; }
+        internal StreamWriter Writer { get; }
         internal TaskCompletionSource<int> Exited { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal bool StopRequested { get; set; }
+
+        internal async Task SendShutdownAsync()
+        {
+            await _writeLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                var message = JsonSerializer.Serialize(new { type = "shutdown" });
+                await Writer.WriteLineAsync(message).ConfigureAwait(false);
+                await Writer.FlushAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+            Reader.Dispose();
+            Writer.Dispose();
+            Pipe.Dispose();
+            _writeLock.Dispose();
+            Job.Dispose();
+            Process.Dispose();
+        }
     }
 }
