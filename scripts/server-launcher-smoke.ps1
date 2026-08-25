@@ -10,6 +10,12 @@ $solution = Join-Path $repositoryRoot 'KevinZonda.Terminal.slnx'
 $serverExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server\bin\$Configuration\net10.0-windows\kterm-server.exe"
 $launcherExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server.Launcher\bin\$Configuration\net10.0-windows\kterm-server-launcher.exe"
 $serverSmoke = Join-Path $repositoryRoot 'scripts\test-kterm-server.mjs'
+$temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$temporaryDirectory = [IO.Path]::GetFullPath((Join-Path $temporaryRoot "kterm-server-launcher-$([Guid]::NewGuid().ToString('N'))"))
+if (-not $temporaryDirectory.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'The Launcher smoke-test directory escaped the system temporary directory.'
+}
+$launcherConfiguration = Join-Path $temporaryDirectory 'server_launcher.json'
 
 function Get-FreeLoopbackUrl {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -43,6 +49,19 @@ function Wait-ForHealth([string]$Url, [Diagnostics.Process]$Owner) {
     if ($null -eq $health -or $health.StatusCode -ne 200) {
         throw "Server at $Url did not become healthy within 15 seconds."
     }
+}
+
+function Write-LauncherConfiguration([string]$Url, [bool]$AutoStart) {
+    [ordered]@{
+        autoStart = $AutoStart
+        server = [ordered]@{
+            urls = $Url
+            authMode = 'disabled'
+            workingDirectory = $repositoryRoot
+            runtimeRetentionMinutes = 30
+            additionalArguments = @()
+        }
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $launcherConfiguration -Encoding utf8
 }
 
 function Test-ServerPipeControl {
@@ -106,11 +125,37 @@ $launcher = $null
 $launcherServer = $null
 $previousMutexSuffix = $env:KTERM_LAUNCHER_MUTEX_SUFFIX
 try {
-    $launcherUrl = Get-FreeLoopbackUrl
+    New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
+    $disabledUrl = Get-FreeLoopbackUrl
+    Write-LauncherConfiguration $disabledUrl $false
     $env:KTERM_LAUNCHER_MUTEX_SUFFIX = [Guid]::NewGuid().ToString('N')
     $launcher = Start-Process `
         -FilePath $launcherExecutable `
-        -ArgumentList @('--urls', $launcherUrl, '--auth-mode', 'disabled') `
+        -ArgumentList @('--config', "`"$launcherConfiguration`"") `
+        -WorkingDirectory $repositoryRoot `
+        -WindowStyle Hidden `
+        -PassThru
+    Start-Sleep -Milliseconds 1000
+    $launcher.Refresh()
+    if ($launcher.HasExited) {
+        throw 'Launcher exited while autoStart was disabled.'
+    }
+    $disabledServer = Get-CimInstance Win32_Process |
+        Where-Object { $_.ParentProcessId -eq $launcher.Id -and $_.Name -eq 'kterm-server.exe' } |
+        Select-Object -First 1
+    if ($null -ne $disabledServer) {
+        throw 'Launcher started Server even though autoStart was false.'
+    }
+    Stop-Process -Id $launcher.Id
+    $null = $launcher.WaitForExit(5000)
+    $launcher = $null
+
+    $launcherUrl = Get-FreeLoopbackUrl
+    Write-LauncherConfiguration $launcherUrl $true
+    $env:KTERM_LAUNCHER_MUTEX_SUFFIX = [Guid]::NewGuid().ToString('N')
+    $launcher = Start-Process `
+        -FilePath $launcherExecutable `
+        -ArgumentList @('--config', "`"$launcherConfiguration`"") `
         -WorkingDirectory $repositoryRoot `
         -WindowStyle Hidden `
         -PassThru
@@ -167,6 +212,9 @@ finally {
     else {
         $env:KTERM_LAUNCHER_MUTEX_SUFFIX = $previousMutexSuffix
     }
+    if (Test-Path -LiteralPath $temporaryDirectory) {
+        Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force
+    }
 }
 
-Write-Output 'kterm-server Launcher smoke test passed: pipe logs/shutdown, Shell I/O, and Job Object cleanup.'
+Write-Output 'kterm-server Launcher smoke test passed: config, pipe logs/shutdown, Shell I/O, and Job Object cleanup.'

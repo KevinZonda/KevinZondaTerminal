@@ -56,12 +56,31 @@ server.cmd --urls http://0.0.0.0:8080
 ```
 
 也可以使用 `kterm-server-launcher.exe` 在系统托盘管理 Server。Launcher 默认自动启动同目录下的
-`kterm-server.exe`，右键托盘图标可选择 `Start`、`Stop`、`Logs` 和 `Exit`；双击图标也会打开日志窗口。
+`kterm-server.exe`，右键托盘图标可选择 `Start`、`Stop`、`Settings...`、`Logs` 和 `Exit`；双击图标也会打开日志窗口。
 传给 Launcher 的命令行参数会继续传给 Server，例如：
 
 ```powershell
 kterm-server-launcher --urls http://0.0.0.0:8080 --auth-mode required
 ```
+
+`Settings...` 会读写 `%USERPROFILE%\.kterm\server_launcher.json`，可配置自动启动、监听地址、鉴权模式、
+Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
+
+```json
+{
+  "autoStart": true,
+  "server": {
+    "urls": "http://0.0.0.0:7132",
+    "authMode": "auto",
+    "workingDirectory": null,
+    "runtimeRetentionMinutes": 30,
+    "additionalArguments": []
+  }
+}
+```
+
+可用 `--config <path>` 指定其他 Launcher 配置文件。配置中的参数先生效，直接传给 Launcher 的 Server
+命令行参数最后生效，可用于临时覆盖。Server 运行期间保存设置时，Launcher 会询问是否立即重启。
 
 `Stop` 和 `Exit` 会先请求 Server 优雅关闭；如果 Server 无响应，Launcher 会清理其完整进程树。
 Launcher 为单实例程序，关闭日志窗口只会隐藏窗口，不会停止 Server。

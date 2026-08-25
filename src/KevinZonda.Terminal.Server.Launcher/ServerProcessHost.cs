@@ -11,7 +11,7 @@ internal sealed class ServerProcessHost : IDisposable
     private static readonly TimeSpan ForcedShutdownTimeout = TimeSpan.FromSeconds(5);
     private readonly Lock _gate = new();
     private readonly string _serverExecutable;
-    private readonly string[] _serverArguments;
+    private string[] _serverArguments;
     private readonly LauncherLogBuffer _logs;
     private ServerRun? _run;
     private bool _disposed;
@@ -22,7 +22,7 @@ internal sealed class ServerProcessHost : IDisposable
         LauncherLogBuffer logs)
     {
         _serverExecutable = serverExecutable;
-        _serverArguments = serverArguments;
+        _serverArguments = [.. serverArguments];
         _logs = logs;
     }
 
@@ -40,8 +40,18 @@ internal sealed class ServerProcessHost : IDisposable
         }
     }
 
+    internal void UpdateArguments(string[] serverArguments)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _serverArguments = [.. serverArguments];
+        }
+    }
+
     internal async Task StartAsync()
     {
+        string[] serverArguments;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -49,6 +59,7 @@ internal sealed class ServerProcessHost : IDisposable
             {
                 return;
             }
+            serverArguments = [.. _serverArguments];
         }
 
         if (!File.Exists(_serverExecutable))
@@ -75,7 +86,7 @@ internal sealed class ServerProcessHost : IDisposable
         };
         startInfo.ArgumentList.Add("--launcher-pipe");
         startInfo.ArgumentList.Add(pipeName);
-        foreach (var argument in _serverArguments)
+        foreach (var argument in serverArguments)
         {
             startInfo.ArgumentList.Add(argument);
         }

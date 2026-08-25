@@ -30,7 +30,25 @@ internal static class Program
         Application.SetColorMode(SystemColorMode.Dark);
         try
         {
-            using var context = new ServerLauncherContext(args);
+            var startup = LauncherStartupOptions.Parse(args);
+            var configurationStore = new LauncherConfigurationStore(startup.ConfigurationPath);
+            LauncherConfiguration configuration;
+            string? configurationError = null;
+            try
+            {
+                configuration = configurationStore.Load();
+            }
+            catch (LauncherConfigurationException exception)
+            {
+                configuration = LauncherConfiguration.Default;
+                configurationError = exception.ToString();
+            }
+
+            using var context = new ServerLauncherContext(
+                configurationStore,
+                configuration,
+                startup.ServerArguments,
+                configurationError);
             Application.Run(context);
         }
         catch (Exception exception)
