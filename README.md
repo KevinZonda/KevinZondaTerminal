@@ -81,6 +81,8 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
 
 可用 `--config <path>` 指定其他 Launcher 配置文件。配置中的参数先生效，直接传给 Launcher 的 Server
 命令行参数最后生效，可用于临时覆盖。Server 运行期间保存设置时，Launcher 会询问是否立即重启。
+`workingDirectory` 为 `null` 或在 Settings 中留空时，Launcher 默认使用当前用户的 `%USERPROFILE%`；
+仅当用户目录不可用时才回退到 Launcher 的当前目录。
 
 `Stop` 和 `Exit` 会先请求 Server 优雅关闭；如果 Server 无响应，Launcher 会清理其完整进程树。
 Launcher 为单实例程序，关闭日志窗口只会隐藏窗口，不会停止 Server。

@@ -48,6 +48,8 @@ internal sealed class SettingsForm : Form
             _authMode.SelectedItem = "auto";
         }
         _workingDirectory.Text = configuration.Server.WorkingDirectory ?? string.Empty;
+        _workingDirectory.PlaceholderText =
+            $"Default: {LauncherConfiguration.DefaultWorkingDirectory}";
         _runtimeRetention.Value = Math.Clamp(
             (decimal)configuration.Server.RuntimeRetentionMinutes,
             _runtimeRetention.Minimum,
@@ -173,6 +175,10 @@ internal sealed class SettingsForm : Form
         if (Directory.Exists(_workingDirectory.Text))
         {
             dialog.SelectedPath = _workingDirectory.Text;
+        }
+        else
+        {
+            dialog.SelectedPath = LauncherConfiguration.DefaultWorkingDirectory;
         }
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {

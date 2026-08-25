@@ -57,7 +57,7 @@ function Write-LauncherConfiguration([string]$Url, [bool]$AutoStart) {
         server = [ordered]@{
             urls = $Url
             authMode = 'disabled'
-            workingDirectory = $repositoryRoot
+            workingDirectory = $null
             runtimeRetentionMinutes = 30
             additionalArguments = @()
         }
@@ -178,6 +178,16 @@ try {
     while ($null -eq $launcherServerInfo -and [DateTime]::UtcNow -lt $deadline)
     if ($null -eq $launcherServerInfo) {
         throw 'Unable to identify the Server process owned by the Launcher.'
+    }
+    $expectedWorkingDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    if ([string]::IsNullOrWhiteSpace($expectedWorkingDirectory) -or
+        -not (Test-Path -LiteralPath $expectedWorkingDirectory -PathType Container)) {
+        $expectedWorkingDirectory = $repositoryRoot
+    }
+    if ($launcherServerInfo.CommandLine.IndexOf(
+            $expectedWorkingDirectory,
+            [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw 'Launcher did not resolve a null workingDirectory to the user profile.'
     }
     $launcherServer = Get-Process -Id $launcherServerInfo.ProcessId
 

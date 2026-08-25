@@ -10,6 +10,17 @@ internal sealed record LauncherConfiguration
 {
     internal static LauncherConfiguration Default { get; } = new();
 
+    internal static string DefaultWorkingDirectory
+    {
+        get
+        {
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return !string.IsNullOrWhiteSpace(userProfile) && Directory.Exists(userProfile)
+                ? Path.GetFullPath(userProfile)
+                : Environment.CurrentDirectory;
+        }
+    }
+
     public bool AutoStart { get; init; } = true;
     public LauncherServerConfiguration Server { get; init; } = new();
 
@@ -143,11 +154,8 @@ internal sealed record LauncherConfiguration
         arguments.Add(normalized.Server.Urls);
         arguments.Add("--auth-mode");
         arguments.Add(normalized.Server.AuthMode);
-        if (normalized.Server.WorkingDirectory is not null)
-        {
-            arguments.Add("--working-directory");
-            arguments.Add(normalized.Server.WorkingDirectory);
-        }
+        arguments.Add("--working-directory");
+        arguments.Add(normalized.Server.WorkingDirectory ?? DefaultWorkingDirectory);
         arguments.Add("--runtime-retention-minutes");
         arguments.Add(normalized.Server.RuntimeRetentionMinutes.ToString(CultureInfo.InvariantCulture));
         arguments.AddRange(commandLineArguments);
