@@ -13,10 +13,6 @@ function equal(expected, actual, message) {
   }
 }
 
-function basic(userName, value) {
-  return `Basic ${Buffer.from(`${userName}:${value}`, 'utf8').toString('base64')}`;
-}
-
 const health = await fetch(new URL('/healthz', baseUrl), { redirect: 'manual' });
 equal(200, health.status, 'health endpoint status');
 
@@ -38,35 +34,63 @@ if (!forwardedLoginLocation || new URL(forwardedLoginLocation, baseUrl).protocol
 }
 
 const loginUrl = new URL(loginLocation, baseUrl);
-const challenge = await fetch(loginUrl, { redirect: 'manual' });
-equal(401, challenge.status, 'Basic challenge status');
-if (!challenge.headers.get('www-authenticate')?.startsWith('Basic realm="KTerm"')) {
-  throw new Error('Basic challenge header is missing or invalid.');
+const loginPage = await fetch(loginUrl, { redirect: 'manual' });
+equal(200, loginPage.status, 'login page status');
+if (loginPage.headers.has('www-authenticate')) {
+  throw new Error('The form login page unexpectedly returned a Basic challenge.');
+}
+const loginCsrfCookie = loginPage.headers.get('set-cookie')?.split(';', 1)[0];
+const loginHtml = await loginPage.text();
+const loginCsrfToken = loginHtml.match(
+  /name="__RequestVerificationToken" value="([^"]+)"/)?.[1];
+if (!loginCsrfCookie || !loginCsrfToken || !loginHtml.includes('<form method="post" action="/auth/login"')) {
+  throw new Error('The login page did not provide its form and CSRF credentials.');
 }
 
-const wrongPassword = await fetch(loginUrl, {
+const missingLoginCsrf = await fetch(loginUrl, {
+  method: 'POST',
   redirect: 'manual',
-  headers: { Authorization: basic('kterm', `${password}-wrong`) }
+  body: loginForm('kterm', password, loginUrl)
+});
+equal(400, missingLoginCsrf.status, 'login without CSRF status');
+
+const wrongPassword = await fetch(loginUrl, {
+  method: 'POST',
+  redirect: 'manual',
+  headers: { Cookie: loginCsrfCookie },
+  body: loginForm('kterm', `${password}-wrong`, loginUrl, loginCsrfToken)
 });
 equal(401, wrongPassword.status, 'wrong password status');
+if (!(await wrongPassword.text()).includes('The username or password is incorrect.')) {
+  throw new Error('Wrong-password login did not return the uniform error message.');
+}
 
 const wrongUser = await fetch(loginUrl, {
+  method: 'POST',
   redirect: 'manual',
-  headers: { Authorization: basic('someone-else', password) }
+  headers: { Cookie: loginCsrfCookie },
+  body: loginForm('someone-else"><script>alert(1)</script>', password, loginUrl, loginCsrfToken)
 });
 equal(401, wrongUser.status, 'wrong user status');
+const wrongUserHtml = await wrongUser.text();
+if (!wrongUserHtml.includes('The username or password is incorrect.') ||
+    wrongUserHtml.includes('<script>alert(1)</script>')) {
+  throw new Error('Wrong-user login did not return an encoded uniform error page.');
+}
 
 const login = await fetch(loginUrl, {
+  method: 'POST',
   redirect: 'manual',
   headers: {
-    Authorization: basic('kterm', password),
+    Cookie: loginCsrfCookie,
     'X-Forwarded-Proto': 'https'
-  }
+  },
+  body: loginForm('kterm', password, loginUrl, loginCsrfToken)
 });
 equal(302, login.status, 'successful login status');
 const setCookie = login.headers.get('set-cookie');
 if (!setCookie) {
-  throw new Error('Successful Basic authentication did not issue a cookie.');
+  throw new Error('Successful form authentication did not issue a cookie.');
 }
 const cookie = setCookie.split(';', 1)[0];
 if (!cookie.startsWith('kterm.auth=')) {
@@ -266,6 +290,15 @@ if (finalDashboardState.runtimes?.some(runtime => runtime.runtimeId === managedR
 }
 
 console.log('kterm-server authentication and Dashboard management checks passed.');
+
+function loginForm(userName, value, loginUrl, csrfToken = '') {
+  return new URLSearchParams({
+    __RequestVerificationToken: csrfToken,
+    returnUrl: loginUrl.searchParams.get('returnUrl') ?? '/',
+    username: userName,
+    password: value
+  });
+}
 
 function websocketStatus(url, cookieHeader) {
   return new Promise((resolve, reject) => {

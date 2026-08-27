@@ -136,10 +136,11 @@ kterm-server auth init
 后续可用 `kterm-server auth add` 增加轮换密码，用 `kterm-server auth verify` 验证密码；三者都支持
 `--file <path>`。
 
-配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示原生 Basic Auth 登录框；用户名默认为
+配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示 KTerm 登录页面；用户名默认为
 `kterm`，可通过 `--custom-username <name>` 覆盖。用户名大小写敏感，不能包含冒号或控制字符，最长 128 字符。
-验证成功后
-Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该 Cookie 鉴权。`/healthz` 保持公开。
+表单使用 CSRF Token，验证成功后 Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该
+Cookie 鉴权；密码只在提交登录表单时发送。登录页面由独立的 `KevinZonda.Terminal.Server.Login` 项目嵌入
+Server，不进入桌面 Terminal 或 Dashboard 前端资源。`/healthz` 保持公开。
 配置不存在或 `allowedHash` 为空时，`auto` 模式会输出 `No Pass Hash, fallback to No Pass.` 并按无密码模式运行。
 
 Server Dashboard 位于 `/dashboard`，用于查看 Runtime、Session、Shell PID、连接状态和缓冲区占用，也可以关闭单个
@@ -147,8 +148,7 @@ Session 或整个 Runtime。Dashboard 前端由独立的 `KevinZonda.Terminal.Se
 `kterm-server`，不会进入桌面 Terminal 的前端资源。管理操作只在密码认证启用时开放；无密码模式下 Dashboard
 只显示管理功能已禁用的提示。Dashboard 的 `Local Configuration` 页签不依赖管理权限，可通过当前 Origin 的
 `kterm.fontFamily`、`kterm.fontSize` 和 `kterm.theme` Local Storage 项调整本浏览器中的所有 Terminal 页面。
-密码认证启用时，Dashboard 的 `Logout` 会通过 CSRF 保护的请求注销认证 Cookie，并停留在公开的退出完成页；
-浏览器仍可能缓存 Basic Auth 凭据，因此不会在退出后自动跳回受保护页面。
+密码认证启用时，Dashboard 的 `Logout` 会通过 CSRF 保护的请求注销认证 Cookie，并停留在公开的退出完成页。
 
 Terminal 网页包含 Web App Manifest、桌面/移动端安装图标、Apple Web App 元信息，以及 Terminal 和 Dashboard
 快捷入口。Service Worker 只缓存带版本 hash 的前端资源和图标，不缓存 HTML、认证、API 或 WebSocket 请求；

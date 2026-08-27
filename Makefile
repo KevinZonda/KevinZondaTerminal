@@ -46,7 +46,7 @@ help:
 	@echo "  make test      - run desktop, Server, Launcher, and user-auth tests"
 	@echo "  make test-desktop - run the desktop 2x2 ConPTY smoke test"
 	@echo "  make test-server - run the HTTP, WebSocket, and Shell server smoke test"
-	@echo "  make test-server-auth - run the server Basic/cookie authentication smoke test"
+	@echo "  make test-server-auth - run the server form/cookie authentication smoke test"
 	@echo "  make test-server-launcher - run the Server Launcher lifecycle smoke test"
 	@echo "  make test-launcher-cert - run the Server Launcher certificate tests"
 	@echo "  make test-auth - run the server user-auth tests"

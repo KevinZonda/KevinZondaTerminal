@@ -30,6 +30,7 @@ as command-line arguments. The generated file has this shape:
 ```
 
 KTerm Server loads this file in its default `auto` authentication mode. When the file exists and contains at
-least one hash, the fixed user name `kterm` can log in through `/auth/login`; successful Basic authentication
-is exchanged for the HttpOnly cookie required by the frontend and `/ws`. A missing or empty file falls back to
+least one hash, the configured user can log in through the form at `/auth/login`; successful form authentication
+is exchanged for the HttpOnly cookie required by the frontend and `/ws`. The user name defaults to `kterm` and
+can be changed with the Server option `--custom-username`. A missing or empty file falls back to
 no-password mode in `auto`, while `--auth-mode required` treats either condition as a startup error.

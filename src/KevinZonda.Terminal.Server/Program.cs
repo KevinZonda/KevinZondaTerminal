@@ -3,6 +3,7 @@ using KevinZonda.Terminal.Server.UserAuth;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Server;
 using KevinZonda.Terminal.Server.Dashboard;
+using KevinZonda.Terminal.Server.Login;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Web;
 using Microsoft.AspNetCore.Authentication;
@@ -73,23 +74,78 @@ if (serverAuthentication.Enabled)
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapGet("/auth/login", async context =>
+    app.MapGet("/auth/login", async (HttpContext context, IAntiforgery antiforgery) =>
     {
-        await context.SignInAsync(
-            ServerAuthentication.CookieScheme,
-            context.User,
-            new AuthenticationProperties
+        var returnUrl = ServerAuthentication.SafeReturnUrl(
+            context.Request.Query["returnUrl"].FirstOrDefault());
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            context.Response.Redirect(returnUrl);
+            return;
+        }
+
+        await WriteLoginPageAsync(context, antiforgery, returnUrl).ConfigureAwait(false);
+    }).AllowAnonymous();
+
+    app.MapPost(
+        "/auth/login",
+        async (
+            HttpContext context,
+            IAntiforgery antiforgery,
+            ServerPasswordVerifier passwordVerifier) =>
+        {
+            var returnUrl = "/";
+            try
             {
-                AllowRefresh = true,
-                IsPersistent = false
-            });
-        context.Response.Redirect(ServerAuthentication.SafeReturnUrl(
-            context.Request.Query["returnUrl"].FirstOrDefault()));
-    }).RequireAuthorization(policy =>
-    {
-        policy.AddAuthenticationSchemes(ServerAuthentication.BasicScheme);
-        policy.RequireAuthenticatedUser();
-    });
+                if (!context.Request.HasFormContentType)
+                {
+                    context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
+                    return;
+                }
+
+                await antiforgery.ValidateRequestAsync(context).ConfigureAwait(false);
+                var form = await context.Request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false);
+                returnUrl = ServerAuthentication.SafeReturnUrl(form["returnUrl"].FirstOrDefault());
+                var userName = form["username"].FirstOrDefault()?.Trim() ?? string.Empty;
+                var password = form["password"].FirstOrDefault() ?? string.Empty;
+                var passwordMatches = password.Length is > 0 and <= 4096 &&
+                    await passwordVerifier.VerifyAsync(password, context.RequestAborted).ConfigureAwait(false);
+                var userNameMatches = string.Equals(
+                    userName,
+                    serverAuthentication.UserName,
+                    StringComparison.Ordinal);
+                if (!userNameMatches || !passwordMatches)
+                {
+                    await WriteLoginPageAsync(
+                        context,
+                        antiforgery,
+                        returnUrl,
+                        userName,
+                        "The username or password is incorrect.",
+                        StatusCodes.Status401Unauthorized).ConfigureAwait(false);
+                    return;
+                }
+
+                await context.SignInAsync(
+                    ServerAuthentication.CookieScheme,
+                    ServerAuthentication.CreatePrincipal(serverAuthentication),
+                    new AuthenticationProperties
+                    {
+                        AllowRefresh = true,
+                        IsPersistent = false
+                    }).ConfigureAwait(false);
+                context.Response.Redirect(returnUrl);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                await WriteLoginPageAsync(
+                    context,
+                    antiforgery,
+                    returnUrl,
+                    error: "The login form expired. Please try again.",
+                    statusCode: StatusCodes.Status400BadRequest).ConfigureAwait(false);
+            }
+        }).AllowAnonymous();
 
     app.MapPost(
         "/auth/logout",
@@ -134,7 +190,7 @@ app.MapGet("/auth/logged-out", (HttpContext context) =>
           <body>
             <main>
               <h1>Logged out</h1>
-              <p>Your KTerm authentication cookie has been removed. Existing Basic credentials may still be cached by this browser.</p>
+              <p>Your KTerm authentication cookie has been removed.</p>
               <a href="/auth/login?returnUrl=%2Fdashboard">Sign in again</a>
             </main>
           </body>
@@ -328,6 +384,30 @@ static async Task<bool> IsValidDashboardRequestAsync(HttpContext context, IAntif
     {
         return false;
     }
+}
+
+static async Task WriteLoginPageAsync(
+    HttpContext context,
+    IAntiforgery antiforgery,
+    string returnUrl,
+    string? userName = null,
+    string? error = null,
+    int statusCode = StatusCodes.Status200OK)
+{
+    var csrfToken = antiforgery.GetAndStoreTokens(context).RequestToken
+        ?? throw new InvalidOperationException("Unable to issue a login CSRF token.");
+    context.Response.StatusCode = statusCode;
+    context.Response.ContentType = "text/html; charset=utf-8";
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers.Pragma = "no-cache";
+    context.Response.Headers["Content-Security-Policy"] =
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; " +
+        "base-uri 'none'; frame-ancestors 'none'";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    await context.Response.WriteAsync(
+        EmbeddedLoginPage.Render(csrfToken, returnUrl, userName, error),
+        context.RequestAborted).ConfigureAwait(false);
 }
 
 namespace KevinZonda.Terminal.Server

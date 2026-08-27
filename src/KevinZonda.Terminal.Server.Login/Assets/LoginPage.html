@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Sign in - KTerm Server</title>
+    <style>
+      :root { color: #e8edf5; background: #080b11; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      * { box-sizing: border-box; }
+      body { display: grid; min-width: 320px; min-height: 100vh; margin: 0; place-items: center; background: radial-gradient(circle at 12% -10%, rgba(70,110,255,.18), transparent 36rem), radial-gradient(circle at 95% 5%, rgba(39,204,151,.08), transparent 28rem), #080b11; }
+      main { width: min(430px, calc(100% - 32px)); padding: 34px; border: 1px solid #1e2530; border-radius: 15px; background: rgba(15,19,28,.92); box-shadow: 0 24px 70px rgba(0,0,0,.3); }
+      .eyebrow { margin: 0 0 8px; color: #7998ff; font-size: 11px; font-weight: 750; letter-spacing: .18em; }
+      h1 { margin: 0; font-size: 30px; letter-spacing: -.035em; }
+      .description { margin: 10px 0 26px; color: #8490a1; font-size: 14px; line-height: 1.55; }
+      form { display: grid; gap: 17px; }
+      label { display: grid; gap: 8px; color: #d8dee9; font-size: 13px; font-weight: 650; }
+      input { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid #2a3341; border-radius: 9px; outline: none; color: #e8edf5; background: #0b1018; font: inherit; }
+      input:focus { border-color: #6689ef; box-shadow: 0 0 0 3px rgba(79,117,225,.14); }
+      button { min-height: 42px; margin-top: 3px; border: 1px solid #3c5180; border-radius: 9px; color: #f2f5fb; background: #2b3d66; cursor: pointer; font: inherit; font-weight: 650; }
+      button:hover { border-color: #6689ef; background: #334979; }
+      .error { margin: 0; padding: 11px 13px; border: 1px solid #713744; border-radius: 9px; color: #ffabb9; background: rgba(76,28,38,.42); font-size: 13px; }
+      .security { margin: 19px 0 0; color: #687385; font-size: 12px; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">KTERM SERVER</p>
+      <h1>Sign in</h1>
+      <p class="description">Enter the credentials configured by the Server administrator.</p>
+      <form method="post" action="/auth/login" autocomplete="on">
+        <input type="hidden" name="__RequestVerificationToken" value="{{CSRF_TOKEN}}">
+        <input type="hidden" name="returnUrl" value="{{RETURN_URL}}">
+        <p class="error" role="alert"{{ERROR_HIDDEN}}>{{ERROR}}</p>
+        <label>
+          Username
+          <input name="username" type="text" value="{{USERNAME}}" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" maxlength="4096" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Sign in</button>
+      </form>
+      <p class="security">Credentials are submitted only when signing in. Use HTTPS for every remote connection.</p>
+    </main>
+  </body>
+</html>

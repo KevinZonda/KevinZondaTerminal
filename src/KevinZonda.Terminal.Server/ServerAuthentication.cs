@@ -1,6 +1,7 @@
 using KevinZonda.Terminal.Server.UserAuth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -27,7 +28,6 @@ internal sealed record ServerAuthenticationState(
 internal static class ServerAuthentication
 {
     internal const string CookieScheme = "KTerm.Cookie";
-    internal const string BasicScheme = "KTerm.Basic";
     internal const string DefaultUserName = "kterm";
     internal const string ConfigurationFingerprintClaim = "kterm:auth-config";
 
@@ -149,11 +149,25 @@ internal static class ServerAuthentication
                     }
                     return Task.CompletedTask;
                 };
-            })
-            .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(
-                BasicScheme,
-                _ => { });
+            });
         services.AddAuthorization();
+    }
+
+    internal static ClaimsPrincipal CreatePrincipal(ServerAuthenticationState state)
+    {
+        if (!state.Enabled || state.ConfigurationFingerprint is null)
+        {
+            throw new InvalidOperationException("Password authentication is not enabled.");
+        }
+
+        var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, state.UserName),
+                new Claim(ClaimTypes.Name, state.UserName),
+                new Claim(ConfigurationFingerprintClaim, state.ConfigurationFingerprint)
+            ],
+            CookieScheme);
+        return new ClaimsPrincipal(identity);
     }
 
     internal static string SafeReturnUrl(string? returnUrl)
