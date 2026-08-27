@@ -137,8 +137,21 @@ server.cmd --auth-mode required --auth-file C:\path\server_auth.json
 
 ### Nginx 反向代理
 
-仓库提供了一份可用于 `sites-enabled` 的简单配置：[docs/nginx/kterm.conf](docs/nginx/kterm.conf)。示例假设
-Nginx 与 Server 位于同一台主机，并将请求转发到 `127.0.0.1:7132`；请先修改 `server_name`，再启用配置：
+仓库提供了一份可用于 `sites-enabled` 的双端 HTTPS 配置：[docs/nginx/kterm.conf](docs/nginx/kterm.conf)。示例拓扑为：
+
+```text
+Browser --HTTPS--> Nginx/VPS1 --HTTPS over FRP TCP--> KTerm ASP.NET Server
+```
+
+FRP 只转发 TCP，不终止 KTerm 的 HTTPS。Nginx 连接 VPS1 本机的 FRP 映射端口 `127.0.0.1:17132`，TLS
+握手和证书校验发生在 Nginx 与 KTerm Server 之间。启用前需要替换：
+
+- 公网域名 `terminal.example.com` 及其 Nginx 证书路径。
+- FRP 在 VPS1 上提供给 Nginx 的本地 TCP 映射端口 `17132`。
+- `proxy_ssl_name` 中的 `kterm-backend.example.com`，它必须匹配 KTerm Server 提供的 HTTPS 证书。
+- `proxy_ssl_trusted_certificate`；公共 CA 证书可沿用示例中的系统 CA bundle，私有 CA 则改为对应 CA 文件。
+
+然后启用配置：
 
 ```bash
 sudo cp docs/nginx/kterm.conf /etc/nginx/sites-available/kterm
@@ -147,15 +160,18 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Server 建议只监听回环地址，避免客户端绕过 Nginx 直接访问后端：
+KTerm Server 与 `frpc` 位于同一台机器时，建议让两者通过回环地址连接：
 
 ```powershell
-kterm-server --urls http://127.0.0.1:7132 --auth-mode required
+kterm-server `
+  --urls https://127.0.0.1:7132 `
+  --auth-mode required
 ```
 
-配置已经转发真实客户端地址、原始协议，并为 `/ws` 设置 WebSocket Upgrade 和长连接超时。Server 只信任来自
-回环地址的 Forwarded Headers；如果 Nginx 位于另一台主机，需要同时限制后端端口的网络访问，并额外配置可信代理地址。
-公网部署建议在 Nginx 上启用 HTTPS；这也是远程浏览器完整启用 Web App 安装和 Service Worker 的前提。
+对应的 `frpc` TCP 代理应将流量发送到 `127.0.0.1:7132`。这样 ASP.NET Server 看到的直接连接方是本机
+`frpc`，符合 Forwarded Headers 默认的回环可信代理边界，不需要信任 VPS1 的地址。Kestrel 的 HTTPS 证书仍通过
+标准 ASP.NET Core 配置提供。Nginx 会校验该后端证书、转发真实客户端地址和原始协议，并为 `/ws` 设置
+WebSocket Upgrade、关闭代理缓冲和延长连接超时。
 
 每个浏览器页面拥有独立的 Workspace、ConPTY 和 Shell。WebSocket 断开后，页面会按指数退避自动重连，
 并恢复原来的 ConPTY、Shell PID 和未确认输出。刷新当前页面时，还会恢复 Workspace、Pane、Tab、
