@@ -4,6 +4,7 @@ SERVER_PROJECT := src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.cspr
 LAUNCHER_PROJECT := src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.Server.Launcher.csproj
 AUTH_TEST_PROJECT := tests/KevinZonda.Terminal.Server.UserAuth.Tests/KevinZonda.Terminal.Server.UserAuth.Tests.csproj
 WEB_DIR := src/KevinZonda.Terminal.Web
+DASHBOARD_DIR := src/KevinZonda.Terminal.Server.Dashboard
 SMOKE_TEST := scripts/smoke.ps1
 SERVER_SMOKE_TEST := scripts/server-smoke.ps1
 SERVER_AUTH_SMOKE_TEST := scripts/server-auth-smoke.ps1
@@ -26,13 +27,14 @@ CONFIG ?= Debug
 
 .DEFAULT_GOAL := build
 
-.PHONY: help deps install restore web build run run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-auth format audit publish publish-desktop publish-server publish-launcher clean
+.PHONY: help deps install restore web dashboard build run run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-auth format audit publish publish-desktop publish-server publish-launcher clean
 
 help:
 	@echo "Available targets:"
 	@echo "  make deps      - restore NuGet and pnpm dependencies"
 	@echo "  make install   - install desktop, Server, and Server Launcher executables"
-	@echo "  make web       - type-check and build the web frontend"
+	@echo "  make web       - type-check and build the terminal and Dashboard frontends"
+	@echo "  make dashboard - type-check and build the Server Dashboard frontend"
 	@echo "  make build     - build KevinZonda Terminal; CONFIG=Debug by default"
 	@echo "  make run       - build and run KevinZonda Terminal"
 	@echo "  make run-server - build and run kterm-server; SERVER_URL=http://0.0.0.0:7132"
@@ -56,6 +58,7 @@ help:
 
 deps: restore
 	pnpm --dir $(WEB_DIR) install --frozen-lockfile
+	pnpm --dir $(DASHBOARD_DIR) install --frozen-lockfile
 
 install: publish
 	powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(INSTALL_DIR)' | Out-Null; Copy-Item -Force -LiteralPath '$(PUBLISH_EXE)' -Destination '$(INSTALL_EXE)'; Copy-Item -Force -LiteralPath '$(SERVER_PUBLISH_EXE)' -Destination '$(INSTALL_SERVER_EXE)'; Copy-Item -Force -LiteralPath '$(LAUNCHER_PUBLISH_EXE)' -Destination '$(INSTALL_LAUNCHER_EXE)'"
@@ -66,6 +69,10 @@ restore:
 
 web:
 	pnpm --dir $(WEB_DIR) run build
+	pnpm --dir $(DASHBOARD_DIR) run build
+
+dashboard:
+	pnpm --dir $(DASHBOARD_DIR) run build
 
 build:
 	dotnet build $(SOLUTION) -c $(CONFIG) --nologo
@@ -111,6 +118,7 @@ format:
 audit:
 	dotnet list $(SOLUTION) package --vulnerable --include-transitive
 	pnpm --dir $(WEB_DIR) audit --audit-level high
+	pnpm --dir $(DASHBOARD_DIR) audit --audit-level high
 
 publish: publish-desktop publish-launcher
 

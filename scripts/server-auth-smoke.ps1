@@ -129,6 +129,15 @@ try {
         throw 'Empty auto-mode kterm-server did not expose the no-password frontend within 15 seconds.'
     }
 
+    $dashboardPage = Invoke-WebRequest -UseBasicParsing "$url/dashboard/" -TimeoutSec 2
+    if ($dashboardPage.StatusCode -ne 200 -or -not $dashboardPage.Content.Contains('id="dashboard-app"')) {
+        throw 'Empty auto-mode kterm-server did not expose the disabled Dashboard frontend.'
+    }
+    $dashboardStatus = Invoke-RestMethod -UseBasicParsing "$url/api/dashboard/status" -TimeoutSec 2
+    if ($dashboardStatus.enabled -ne $false) {
+        throw 'Empty auto-mode Dashboard management was not disabled.'
+    }
+
     Stop-Process -Id $server.Id
     $null = $server.WaitForExit(5000)
     $server = $null

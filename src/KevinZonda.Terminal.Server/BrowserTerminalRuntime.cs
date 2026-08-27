@@ -20,20 +20,27 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
     private readonly Dictionary<string, SessionRuntimeState> _sessionStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task<SessionRuntimeState>> _createOperations = new(StringComparer.Ordinal);
     private readonly HashSet<string> _closeOperations = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _closedSessionIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StringBuilder> _pendingOutput = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TerminalExitStatus> _pendingExits = new(StringComparer.Ordinal);
+    private readonly DateTimeOffset _createdAtUtc = DateTimeOffset.UtcNow;
+    private readonly TimeSpan _runtimeRetention;
     private AppSettings _settings;
     private IBrowserTerminalClient? _client;
+    private DateTimeOffset? _lastConnectedAtUtc;
+    private DateTimeOffset? _lastDisconnectedAtUtc;
     private long _epoch;
     private long _idleVersion;
     private long _bufferedOutputBytes;
     private bool _disposeStarted;
     private int _disposeInvoked;
+    private int _closeAsReplaced;
 
     internal BrowserTerminalRuntime(string id, AppSettings settings, ServerOptions options)
     {
         Id = id;
         _settings = settings;
+        _runtimeRetention = options.RuntimeRetention;
         _sessions = new TerminalSessionManager(settings, options.StartingDirectory);
         _agentUsage = new AgentUsageStatusService(_sessions, settings);
         _systemMetrics = new SystemMetricsService();
@@ -61,6 +68,8 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             ObjectDisposedException.ThrowIf(_disposeStarted, this);
             previousClient = _client;
             _client = client;
+            _lastConnectedAtUtc = DateTimeOffset.UtcNow;
+            _lastDisconnectedAtUtc = null;
             epoch = ++_epoch;
             _idleVersion++;
 
@@ -124,8 +133,72 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             }
 
             _client = null;
+            _lastDisconnectedAtUtc = DateTimeOffset.UtcNow;
             return ++_idleVersion;
         }
+    }
+
+    internal DashboardRuntimeSnapshot GetDashboardSnapshot()
+    {
+        lock (_sync)
+        {
+            var sessions = _sessionStates.Values
+                .Where(state => state.Announced)
+                .OrderBy(state => state.SessionId, StringComparer.Ordinal)
+                .Select(state => new DashboardSessionSnapshot(
+                    state.SessionId,
+                    state.ShellName,
+                    state.ProcessId,
+                    state.Columns,
+                    state.Rows,
+                    state.ExitStatus is not null,
+                    state.ExitStatus?.ExitCode,
+                    state.ExitStatus?.Failure,
+                    state.Output.Sum(output => (long)output.ByteCount)))
+                .ToArray();
+            return new DashboardRuntimeSnapshot(
+                Id,
+                _createdAtUtc,
+                _client is not null,
+                _lastConnectedAtUtc,
+                _lastDisconnectedAtUtc,
+                _client is null && _lastDisconnectedAtUtc is { } disconnectedAt
+                    ? disconnectedAt + _runtimeRetention
+                    : null,
+                _bufferedOutputBytes,
+                sessions);
+        }
+    }
+
+    internal async Task<bool> CloseSessionFromDashboardAsync(string sessionId)
+    {
+        IBrowserTerminalClient? client;
+        long finalOutputSequence;
+        lock (_sync)
+        {
+            if (_disposeStarted || !_sessionStates.TryGetValue(sessionId, out var state))
+            {
+                return false;
+            }
+            finalOutputSequence = state.NextOutputSeq - 1;
+            RemoveSessionLocked(sessionId);
+            client = _client;
+        }
+
+        client?.TryPost("session.exited", sessionId: sessionId, payload: new
+        {
+            exitCode = 0,
+            failure = "Session closed from the server dashboard.",
+            finalOutputSeq = finalOutputSequence
+        });
+        await _sessions.CloseAsync(sessionId).ConfigureAwait(false);
+        return true;
+    }
+
+    internal ValueTask CloseFromDashboardAsync()
+    {
+        Volatile.Write(ref _closeAsReplaced, 1);
+        return DisposeAsync();
     }
 
     internal bool TryBeginExpiration(long idleVersion)
@@ -203,7 +276,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 break;
 
             case "session.close":
-                await CloseSessionAsync(source, message).ConfigureAwait(false);
+                await CloseSessionFromClientAsync(source, message).ConfigureAwait(false);
                 break;
 
             case "settings.fontSize":
@@ -430,7 +503,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         }
     }
 
-    private async Task CloseSessionAsync(IBrowserTerminalClient source, BridgeMessage message)
+    private async Task CloseSessionFromClientAsync(IBrowserTerminalClient source, BridgeMessage message)
     {
         var sessionId = RequireSessionId(message);
         var operationId = GetString(message.Payload, "operationId");
@@ -445,16 +518,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             if (_closeOperations.Add(operationId))
             {
                 shouldClose = true;
-                if (_sessionStates.Remove(sessionId, out var state))
-                {
-                    foreach (var output in state.Output)
-                    {
-                        _bufferedOutputBytes -= output.ByteCount;
-                    }
-                }
-                _pendingOutput.Remove(sessionId);
-                _pendingExits.Remove(sessionId);
-                Monitor.PulseAll(_sync);
+                RemoveSessionLocked(sessionId);
             }
         }
 
@@ -465,12 +529,33 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         source.TryPost("session.closed", message.RequestId, sessionId, new { operationId });
     }
 
+    private bool RemoveSessionLocked(string sessionId)
+    {
+        var removed = _sessionStates.Remove(sessionId, out var state);
+        _closedSessionIds.Add(sessionId);
+        if (state is not null)
+        {
+            foreach (var output in state.Output)
+            {
+                _bufferedOutputBytes -= output.ByteCount;
+            }
+        }
+        _pendingOutput.Remove(sessionId);
+        _pendingExits.Remove(sessionId);
+        Monitor.PulseAll(_sync);
+        return removed;
+    }
+
     private void HandleOutput(string sessionId, string data)
     {
         lock (_sync)
         {
             if (!_sessionStates.TryGetValue(sessionId, out var state))
             {
+                if (_closedSessionIds.Contains(sessionId))
+                {
+                    return;
+                }
                 if (!_pendingOutput.TryGetValue(sessionId, out var pending))
                 {
                     pending = new StringBuilder();
@@ -516,6 +601,10 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         {
             if (!_sessionStates.TryGetValue(sessionId, out var state))
             {
+                if (_closedSessionIds.Contains(sessionId))
+                {
+                    return;
+                }
                 _pendingExits[sessionId] = status;
                 return;
             }
@@ -633,7 +722,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             Monitor.PulseAll(_sync);
         }
 
-        client?.Supersede();
+        client?.Supersede(Volatile.Read(ref _closeAsReplaced) != 0);
         _sessions.OutputReceived -= HandleOutput;
         _sessions.SessionExited -= HandleExit;
         _agentUsage.StatusChanged -= HandleAgentUsage;

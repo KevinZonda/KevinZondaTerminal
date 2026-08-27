@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>KTerm Server Dashboard</title>
+  </head>
+  <body>
+    <main id="dashboard-app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">KTERM SERVER</p>
+          <h1>Session Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="last-updated" class="muted">Connecting…</span>
+          <button id="refresh" class="button secondary" type="button">Refresh</button>
+          <a class="button secondary" href="/">Open terminal</a>
+        </div>
+      </header>
+
+      <section id="notice" class="notice" hidden></section>
+
+      <section id="dashboard-content" hidden>
+        <div id="summary" class="summary" aria-label="Server summary"></div>
+
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">ACTIVE STATE</p>
+            <h2>Browser runtimes</h2>
+          </div>
+          <p class="muted">Updates automatically every 2 seconds</p>
+        </div>
+
+        <div id="runtime-list" class="runtime-list"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

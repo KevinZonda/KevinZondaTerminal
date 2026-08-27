@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
+    <ProjectReference Include="..\KevinZonda.Terminal.Server.Dashboard\KevinZonda.Terminal.Server.Dashboard.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Server.UserAuth\KevinZonda.Terminal.Server.UserAuth.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
   </ItemGroup>

@@ -98,7 +98,8 @@ internal static class ServerAuthentication
                 options.ReturnUrlParameter = "returnUrl";
                 options.Events.OnRedirectToLogin = context =>
                 {
-                    if (context.Request.Path.StartsWithSegments("/ws"))
+                    if (context.Request.Path.StartsWithSegments("/ws") ||
+                        context.Request.Path.StartsWithSegments("/api"))
                     {
                         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     }

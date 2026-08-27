@@ -47,6 +47,34 @@ internal sealed class BrowserTerminalRuntimeRegistry : IAsyncDisposable
         }
     }
 
+    internal IReadOnlyList<DashboardRuntimeSnapshot> GetDashboardSnapshot() =>
+        _runtimes.Values
+            .Select(runtime => runtime.GetDashboardSnapshot())
+            .OrderByDescending(runtime => runtime.Connected)
+            .ThenByDescending(runtime => runtime.LastConnectedAtUtc ?? runtime.CreatedAtUtc)
+            .ToArray();
+
+    internal async Task<bool> CloseRuntimeFromDashboardAsync(string runtimeId)
+    {
+        if (!_runtimes.TryRemove(runtimeId, out var runtime))
+        {
+            return false;
+        }
+
+        await runtime.CloseFromDashboardAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    internal async Task<bool> CloseSessionFromDashboardAsync(string runtimeId, string sessionId)
+    {
+        if (!_runtimes.TryGetValue(runtimeId, out var runtime))
+        {
+            return false;
+        }
+
+        return await runtime.CloseSessionFromDashboardAsync(sessionId).ConfigureAwait(false);
+    }
+
     private async Task ExpireAsync(BrowserTerminalRuntime runtime, long idleVersion)
     {
         try
