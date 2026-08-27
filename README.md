@@ -78,6 +78,10 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
     "authMode": "auto",
     "workingDirectory": null,
     "runtimeRetentionMinutes": 30,
+    "certificate": {
+      "publicCertificatePath": null,
+      "privateKeyPath": null
+    },
     "additionalArguments": []
   }
 }
@@ -87,6 +91,23 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
 命令行参数最后生效，可用于临时覆盖。Server 运行期间保存设置时，Launcher 会询问是否立即重启。
 `workingDirectory` 为 `null` 或在 Settings 中留空时，Launcher 默认使用当前用户的 `%USERPROFILE%`；
 仅当用户目录不可用时才回退到 Launcher 的当前目录。
+
+Launcher Settings 支持选择 PEM 格式的 Public certificate 和 Private key；两者必须同时配置、能够互相匹配，
+且私钥不能加密。Launcher 会把路径转换为 Kestrel 的默认 HTTPS 证书参数，不在配置文件中保存证书内容或密码。
+`Generate self-signed certificate...` 会要求输入证书域名，并可填写 Country/Region、State/Province、
+Locality、Organization 和 Organizational Unit 等证书 Subject 信息；除域名外均可留空，Country/Region
+使用两位国家代码（例如 `CN` 或 `US`）。然后生成：
+
+```text
+%USERPROFILE%\.kterm\cert\<domain>\pub.pem
+%USERPROFILE%\.kterm\cert\<domain>\priv.pem
+%USERPROFILE%\.kterm\cert\<domain>\ca.pem
+```
+
+`pub.pem` 是 KTerm Server 证书，`priv.pem` 是未加密的 Server 私钥，`ca.pem` 是签发它的自签名 CA 公钥证书，
+用于复制到 VPS1 并配置为 Nginx 的 `proxy_ssl_trusted_certificate`。Server 证书包含输入域名以及 `localhost`、
+`127.0.0.1`、`::1`；Nginx 的 `proxy_ssl_name` 必须使用其中一个名称。重新生成已有域名的证书会更换 CA，
+因此也必须同步更新 VPS1 上的 `ca.pem`。
 
 `Stop` 和 `Exit` 会先请求 Server 优雅关闭；如果 Server 无响应，Launcher 会清理其完整进程树。
 Launcher 为单实例程序，关闭日志窗口只会隐藏窗口，不会停止 Server。

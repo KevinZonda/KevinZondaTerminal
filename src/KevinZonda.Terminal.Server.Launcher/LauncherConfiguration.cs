@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -67,6 +69,8 @@ internal sealed record LauncherConfiguration
                 "Runtime retention must be between 0.1 and 1440 minutes.");
         }
 
+        var certificate = NormalizeCertificate(Server.Certificate);
+
         string? workingDirectory = null;
         if (!string.IsNullOrWhiteSpace(Server.WorkingDirectory))
         {
@@ -122,6 +126,7 @@ internal sealed record LauncherConfiguration
                 Urls = urls,
                 AuthMode = authMode,
                 WorkingDirectory = workingDirectory,
+                Certificate = certificate,
                 AdditionalArguments = additionalArguments
             }
         };
@@ -150,6 +155,14 @@ internal sealed record LauncherConfiguration
         var normalized = Normalize();
         var arguments = new List<string>();
         arguments.AddRange(normalized.Server.AdditionalArguments);
+        if (normalized.Server.Certificate.PublicCertificatePath is not null &&
+            normalized.Server.Certificate.PrivateKeyPath is not null)
+        {
+            arguments.Add("--Kestrel:Certificates:Default:Path");
+            arguments.Add(normalized.Server.Certificate.PublicCertificatePath);
+            arguments.Add("--Kestrel:Certificates:Default:KeyPath");
+            arguments.Add(normalized.Server.Certificate.PrivateKeyPath);
+        }
         arguments.Add("--urls");
         arguments.Add(normalized.Server.Urls);
         arguments.Add("--auth-mode");
@@ -161,6 +174,76 @@ internal sealed record LauncherConfiguration
         arguments.AddRange(commandLineArguments);
         return [.. arguments];
     }
+
+    private static LauncherCertificateConfiguration NormalizeCertificate(
+        LauncherCertificateConfiguration? certificate)
+    {
+        certificate ??= new LauncherCertificateConfiguration();
+        var publicCertificatePath = NormalizeOptionalPath(certificate.PublicCertificatePath);
+        var privateKeyPath = NormalizeOptionalPath(certificate.PrivateKeyPath);
+        if ((publicCertificatePath is null) != (privateKeyPath is null))
+        {
+            throw new LauncherConfigurationException(
+                "Both the public certificate and private key paths are required.");
+        }
+        if (publicCertificatePath is null || privateKeyPath is null)
+        {
+            return new LauncherCertificateConfiguration();
+        }
+        if (!File.Exists(publicCertificatePath))
+        {
+            throw new LauncherConfigurationException(
+                $"The public certificate does not exist: {publicCertificatePath}");
+        }
+        if (!File.Exists(privateKeyPath))
+        {
+            throw new LauncherConfigurationException(
+                $"The private key does not exist: {privateKeyPath}");
+        }
+
+        try
+        {
+            using var loaded = X509Certificate2.CreateFromPemFile(
+                publicCertificatePath,
+                privateKeyPath);
+            if (!loaded.HasPrivateKey)
+            {
+                throw new CryptographicException("The certificate has no matching private key.");
+            }
+        }
+        catch (Exception exception) when (
+            exception is CryptographicException or IOException or UnauthorizedAccessException)
+        {
+            throw new LauncherConfigurationException(
+                "Unable to load the PEM certificate and private key. " +
+                "Encrypted private keys are not supported.",
+                exception);
+        }
+
+        return new LauncherCertificateConfiguration
+        {
+            PublicCertificatePath = publicCertificatePath,
+            PrivateKeyPath = privateKeyPath
+        };
+    }
+
+    private static string? NormalizeOptionalPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetFullPath(value.Trim());
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new LauncherConfigurationException("A certificate path is invalid.", exception);
+        }
+    }
 }
 
 internal sealed record LauncherServerConfiguration
@@ -169,7 +252,14 @@ internal sealed record LauncherServerConfiguration
     public string AuthMode { get; init; } = "auto";
     public string? WorkingDirectory { get; init; }
     public double RuntimeRetentionMinutes { get; init; } = 30;
+    public LauncherCertificateConfiguration Certificate { get; init; } = new();
     public string[] AdditionalArguments { get; init; } = [];
+}
+
+internal sealed record LauncherCertificateConfiguration
+{
+    public string? PublicCertificatePath { get; init; }
+    public string? PrivateKeyPath { get; init; }
 }
 
 internal sealed class LauncherConfigurationStore

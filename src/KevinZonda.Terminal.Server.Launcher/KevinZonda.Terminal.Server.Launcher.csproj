@@ -17,4 +17,10 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <SelfContained>false</SelfContained>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>KevinZonda.Terminal.Server.Launcher.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

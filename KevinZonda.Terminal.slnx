@@ -9,5 +9,6 @@
   <Project Path="src/KevinZonda.Terminal.Server.UserAuth/KevinZonda.Terminal.Server.UserAuth.csproj" />
   <Project Path="src/KevinZonda.Terminal/KevinZonda.Terminal.csproj" />
   <Project Path="tests/KevinZonda.AgentUsageMonitor.Tests/KevinZonda.AgentUsageMonitor.Tests.csproj" />
+  <Project Path="tests/KevinZonda.Terminal.Server.Launcher.Tests/KevinZonda.Terminal.Server.Launcher.Tests.csproj" />
   <Project Path="tests/KevinZonda.Terminal.Server.UserAuth.Tests/KevinZonda.Terminal.Server.UserAuth.Tests.csproj" />
 </Solution>
