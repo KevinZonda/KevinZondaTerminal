@@ -130,7 +130,9 @@ try {
     }
 
     $dashboardPage = Invoke-WebRequest -UseBasicParsing "$url/dashboard/" -TimeoutSec 2
-    if ($dashboardPage.StatusCode -ne 200 -or -not $dashboardPage.Content.Contains('id="dashboard-app"')) {
+    if ($dashboardPage.StatusCode -ne 200 -or
+        -not $dashboardPage.Content.Contains('id="dashboard-app"') -or
+        -not $dashboardPage.Content.Contains('Local Configuration')) {
         throw 'Empty auto-mode kterm-server did not expose the disabled Dashboard frontend.'
     }
     $dashboardStatus = Invoke-RestMethod -UseBasicParsing "$url/api/dashboard/status" -TimeoutSec 2

@@ -120,7 +120,8 @@ Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该 
 Server Dashboard 位于 `/dashboard`，用于查看 Runtime、Session、Shell PID、连接状态和缓冲区占用，也可以关闭单个
 Session 或整个 Runtime。Dashboard 前端由独立的 `KevinZonda.Terminal.Server.Dashboard` 项目构建并嵌入
 `kterm-server`，不会进入桌面 Terminal 的前端资源。管理操作只在密码认证启用时开放；无密码模式下 Dashboard
-只显示管理功能已禁用的提示。
+只显示管理功能已禁用的提示。Dashboard 的 `Local Configuration` 页签不依赖管理权限，可通过当前 Origin 的
+`kterm.fontFamily`、`kterm.fontSize` 和 `kterm.theme` Local Storage 项调整本浏览器中的所有 Terminal 页面。
 
 可用 `--auth-file <path>` 指定其他配置文件；`--auth-mode required` 要求配置存在且非空，
 `--auth-mode disabled` 则明确关闭密码验证：

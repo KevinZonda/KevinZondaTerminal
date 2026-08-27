@@ -1,5 +1,18 @@
 import './styles.css';
 
+const FONT_FAMILY_STORAGE_KEY = 'kterm.fontFamily';
+const FONT_SIZE_STORAGE_KEY = 'kterm.fontSize';
+const THEME_STORAGE_KEY = 'kterm.theme';
+const TERMINAL_THEME_NAMES = [
+  'KevinZonda Terminal Dark',
+  'Pro',
+  'Ubuntu',
+  'Campbell Powershell',
+  'Builtin Tango Dark',
+  'Campbell',
+  'IBM 5153'
+] as const;
+
 interface SessionSnapshot {
   sessionId: string;
   shellName: string;
@@ -44,20 +57,147 @@ const summary = requireElement<HTMLElement>('summary');
 const runtimeList = requireElement<HTMLElement>('runtime-list');
 const updated = requireElement<HTMLElement>('last-updated');
 const refreshButton = requireElement<HTMLButtonElement>('refresh');
+const sessionsTab = requireElement<HTMLButtonElement>('sessions-tab');
+const localConfigurationTab = requireElement<HTMLButtonElement>('local-configuration-tab');
+const sessionsPanel = requireElement<HTMLElement>('sessions-panel');
+const localConfigurationPanel = requireElement<HTMLElement>('local-configuration-panel');
+const localConfigurationForm = requireElement<HTMLFormElement>('local-configuration-form');
+const localFontFamily = requireElement<HTMLInputElement>('local-font-family');
+const localFontSize = requireElement<HTMLInputElement>('local-font-size');
+const localTheme = requireElement<HTMLSelectElement>('local-theme');
+const localOrigin = requireElement<HTMLElement>('local-origin');
+const localConfigurationStatus = requireElement<HTMLElement>('local-configuration-status');
+const resetLocalConfiguration = requireElement<HTMLButtonElement>('reset-local-configuration');
 let csrfToken = '';
 let refreshTimer: number | undefined;
 let requestInFlight = false;
 
 refreshButton.addEventListener('click', () => void refresh());
+sessionsTab.addEventListener('click', () => activateTab('sessions'));
+localConfigurationTab.addEventListener('click', () => activateTab('local-configuration'));
+localConfigurationForm.addEventListener('submit', saveLocalConfiguration);
+resetLocalConfiguration.addEventListener('click', clearLocalConfiguration);
+window.addEventListener('storage', event => {
+  if (event.key === FONT_FAMILY_STORAGE_KEY ||
+      event.key === FONT_SIZE_STORAGE_KEY ||
+      event.key === THEME_STORAGE_KEY) {
+    loadLocalConfiguration();
+    showLocalConfigurationStatus('Updated in another page.');
+  }
+});
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     void refresh();
   }
 });
 
+TERMINAL_THEME_NAMES.forEach(themeName => {
+  const option = document.createElement('option');
+  option.value = themeName;
+  option.textContent = themeName;
+  localTheme.append(option);
+});
+localOrigin.textContent = window.location.origin;
+loadLocalConfiguration();
+activateTab(window.location.hash === '#local-configuration' ? 'local-configuration' : 'sessions', false);
 void refresh();
 refreshTimer = window.setInterval(() => void refresh(), 2_000);
 window.addEventListener('pagehide', () => window.clearInterval(refreshTimer));
+
+type DashboardTab = 'sessions' | 'local-configuration';
+
+function activateTab(tab: DashboardTab, updateHash = true): void {
+  const localActive = tab === 'local-configuration';
+  sessionsTab.classList.toggle('active', !localActive);
+  sessionsTab.setAttribute('aria-selected', String(!localActive));
+  localConfigurationTab.classList.toggle('active', localActive);
+  localConfigurationTab.setAttribute('aria-selected', String(localActive));
+  sessionsPanel.hidden = localActive;
+  localConfigurationPanel.hidden = !localActive;
+  if (updateHash) {
+    window.history.replaceState(
+      null,
+      '',
+      localActive
+        ? `${window.location.pathname}${window.location.search}#local-configuration`
+        : `${window.location.pathname}${window.location.search}`
+    );
+  }
+}
+
+function loadLocalConfiguration(): void {
+  try {
+    localFontFamily.value = window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY)?.trim() ?? '';
+    const storedFontSize = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY)?.trim() ?? '';
+    const fontSize = Number(storedFontSize);
+    localFontSize.value = storedFontSize && Number.isFinite(fontSize) && fontSize >= 8 && fontSize <= 72
+      ? String(fontSize)
+      : '';
+
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY)?.trim() ?? '';
+    const themeName = TERMINAL_THEME_NAMES.find(
+      candidate => candidate.toLowerCase() === storedTheme.toLowerCase()
+    );
+    localTheme.value = themeName ?? '';
+  } catch {
+    showLocalConfigurationStatus('Browser storage is unavailable.', true);
+  }
+}
+
+function saveLocalConfiguration(event: SubmitEvent): void {
+  event.preventDefault();
+  if (!localConfigurationForm.reportValidity()) {
+    return;
+  }
+
+  const rawFontSize = localFontSize.value.trim();
+  const fontSize = Number(rawFontSize);
+  if (rawFontSize && (!Number.isFinite(fontSize) || fontSize < 8 || fontSize > 72)) {
+    localFontSize.setCustomValidity('Font size must be between 8 and 72.');
+    localFontSize.reportValidity();
+    localFontSize.setCustomValidity('');
+    return;
+  }
+
+  try {
+    const fontFamily = localFontFamily.value.trim();
+    if (fontFamily) {
+      window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, fontFamily);
+    } else {
+      window.localStorage.removeItem(FONT_FAMILY_STORAGE_KEY);
+    }
+    if (rawFontSize) {
+      window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(fontSize));
+    } else {
+      window.localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+    }
+    if (localTheme.value) {
+      window.localStorage.setItem(THEME_STORAGE_KEY, localTheme.value);
+    } else {
+      window.localStorage.removeItem(THEME_STORAGE_KEY);
+    }
+    showLocalConfigurationStatus('Saved. Open Terminal pages update automatically.');
+  } catch {
+    showLocalConfigurationStatus('Unable to write browser storage.', true);
+  }
+}
+
+function clearLocalConfiguration(): void {
+  try {
+    window.localStorage.removeItem(FONT_FAMILY_STORAGE_KEY);
+    window.localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+    loadLocalConfiguration();
+    showLocalConfigurationStatus('Using Server defaults.');
+  } catch {
+    showLocalConfigurationStatus('Unable to write browser storage.', true);
+  }
+}
+
+function showLocalConfigurationStatus(message: string, error = false): void {
+  localConfigurationStatus.textContent = message;
+  localConfigurationStatus.classList.toggle('field-error', error);
+}
 
 async function refresh(): Promise<void> {
   if (requestInFlight) {

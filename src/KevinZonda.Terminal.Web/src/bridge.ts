@@ -157,7 +157,9 @@ interface PendingInputState {
 }
 
 export class NativeBridge {
+  private static readonly FONT_FAMILY_STORAGE_KEY = 'kterm.fontFamily';
   private static readonly FONT_SIZE_STORAGE_KEY = 'kterm.fontSize';
+  private static readonly THEME_STORAGE_KEY = 'kterm.theme';
   private readonly handlers = new Map<string, Set<BridgeEventHandler>>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly webView = window.chrome?.webview;
@@ -179,7 +181,9 @@ export class NativeBridge {
   private everConnected = false;
   private replaced = false;
   private currentSettings: AppSettings = structuredClone(DEFAULT_SETTINGS);
+  private serverFontFamily = DEFAULT_SETTINGS.font.family;
   private serverFontSize = DEFAULT_SETTINGS.font.size;
+  private serverThemeName = DEFAULT_SETTINGS.theme.name;
 
   public constructor(private readonly resumeStore?: BrowserResumeStore) {
     this.runtimeId = resumeStore?.runtimeId ?? createId();
@@ -370,8 +374,14 @@ export class NativeBridge {
     if (typeof settings !== 'object' || settings === null) {
       const defaults = structuredClone(DEFAULT_SETTINGS);
       if (!this.webView) {
+        this.serverFontFamily = defaults.font.family;
         this.serverFontSize = defaults.font.size;
+        this.serverThemeName = defaults.theme.name;
+        defaults.font.family = this.loadBrowserFontFamily() ?? defaults.font.family;
         defaults.font.size = this.loadBrowserFontSize() ?? defaults.font.size;
+        defaults.theme.name = normalizeTerminalThemeName(
+          this.loadBrowserTheme() ?? defaults.theme.name
+        );
       }
       this.currentSettings = defaults;
       return structuredClone(defaults);
@@ -406,12 +416,16 @@ export class NativeBridge {
 
     const normalizedSettings: AppSettings = {
       font: {
-        family,
+        family: this.webView ? family : (this.loadBrowserFontFamily() ?? family),
         size: this.webView ? size : (this.loadBrowserFontSize() ?? size),
         lineHeight,
         enableLigatures: font.enableLigatures === true
       },
-      theme: { name: normalizeTerminalThemeName(theme.name) },
+      theme: {
+        name: normalizeTerminalThemeName(
+          this.webView ? theme.name : (this.loadBrowserTheme() ?? theme.name)
+        )
+      },
       cursor: {
         shape: cursor.shape === 'block' || cursor.shape === 'underline'
           ? cursor.shape
@@ -427,7 +441,9 @@ export class NativeBridge {
         exitBehavior: shell.exitBehavior === 'CloseTab' ? 'CloseTab' : 'KeepTab'
       }
     };
+    this.serverFontFamily = family;
     this.serverFontSize = size;
+    this.serverThemeName = normalizeTerminalThemeName(theme.name);
     this.currentSettings = normalizedSettings;
     return structuredClone(normalizedSettings);
   }
@@ -1069,18 +1085,47 @@ export class NativeBridge {
     }
   }
 
+  private loadBrowserFontFamily(): string | undefined {
+    try {
+      const storedFamily = window.localStorage
+        .getItem(NativeBridge.FONT_FAMILY_STORAGE_KEY)
+        ?.trim();
+      return storedFamily && storedFamily.length <= 256 ? storedFamily : undefined;
+    } catch {
+      // Storage can be unavailable in restricted/private browser contexts.
+      return undefined;
+    }
+  }
+
+  private loadBrowserTheme(): string | undefined {
+    try {
+      const storedTheme = window.localStorage.getItem(NativeBridge.THEME_STORAGE_KEY)?.trim();
+      return storedTheme || undefined;
+    } catch {
+      // Storage can be unavailable in restricted/private browser contexts.
+      return undefined;
+    }
+  }
+
   private readonly handleBrowserStorage = (event: StorageEvent): void => {
-    if (event.key !== NativeBridge.FONT_SIZE_STORAGE_KEY) {
+    if (event.key !== NativeBridge.FONT_FAMILY_STORAGE_KEY &&
+        event.key !== NativeBridge.FONT_SIZE_STORAGE_KEY &&
+        event.key !== NativeBridge.THEME_STORAGE_KEY) {
       return;
     }
 
-    const storedSize = event.newValue === null || event.newValue.trim() === ''
-      ? Number.NaN
-      : Number(event.newValue);
-    const size = Number.isFinite(storedSize)
-      ? this.normalizeFontSize(storedSize)
-      : this.serverFontSize;
-    if (size === this.currentSettings.font.size) {
+    const fontFamily = event.key === NativeBridge.FONT_FAMILY_STORAGE_KEY
+      ? this.browserFontFamilyFromStorageEvent(event)
+      : this.currentSettings.font.family;
+    const size = event.key === NativeBridge.FONT_SIZE_STORAGE_KEY
+      ? this.browserFontSizeFromStorageEvent(event)
+      : this.currentSettings.font.size;
+    const themeName = event.key === NativeBridge.THEME_STORAGE_KEY
+      ? normalizeTerminalThemeName(event.newValue?.trim() || this.serverThemeName)
+      : this.currentSettings.theme.name;
+    if (fontFamily === this.currentSettings.font.family &&
+        size === this.currentSettings.font.size &&
+        themeName === this.currentSettings.theme.name) {
       return;
     }
 
@@ -1088,8 +1133,10 @@ export class NativeBridge {
       ...this.currentSettings,
       font: {
         ...this.currentSettings.font,
+        family: fontFamily,
         size
-      }
+      },
+      theme: { name: themeName }
     };
     const settings = structuredClone(this.currentSettings);
     this.handlers.get('app.settingsChanged')?.forEach(handler => handler({
@@ -1098,4 +1145,20 @@ export class NativeBridge {
       payload: { settings }
     }));
   };
+
+  private browserFontSizeFromStorageEvent(event: StorageEvent): number {
+    const storedSize = event.newValue === null || event.newValue.trim() === ''
+      ? Number.NaN
+      : Number(event.newValue);
+    return Number.isFinite(storedSize)
+      ? this.normalizeFontSize(storedSize)
+      : this.serverFontSize;
+  }
+
+  private browserFontFamilyFromStorageEvent(event: StorageEvent): string {
+    const storedFamily = event.newValue?.trim();
+    return storedFamily && storedFamily.length <= 256
+      ? storedFamily
+      : this.serverFontFamily;
+  }
 }

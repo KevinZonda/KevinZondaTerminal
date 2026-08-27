@@ -94,6 +94,12 @@ const dashboardHtml = await dashboard.text();
 if (!dashboardHtml.includes('id="dashboard-app"')) {
   throw new Error('Authenticated Dashboard did not return the Dashboard frontend.');
 }
+if (!dashboardHtml.includes('Local Configuration')) {
+  throw new Error('Authenticated Dashboard did not include the Local Configuration tab.');
+}
+if (!dashboardHtml.includes('id="local-font-family"')) {
+  throw new Error('Authenticated Dashboard did not include the local font-family setting.');
+}
 
 const dashboardAssetPath = dashboardHtml.match(/(?:src|href)="([^"]*assets\/[^"]+)"/)?.[1];
 if (!dashboardAssetPath) {

@@ -11,7 +11,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">KTERM SERVER</p>
-          <h1>Session Dashboard</h1>
+          <h1>Server Dashboard</h1>
         </div>
         <div class="topbar-actions">
           <span id="last-updated" class="muted">Connecting…</span>
@@ -20,20 +20,82 @@
         </div>
       </header>
 
-      <section id="notice" class="notice" hidden></section>
+      <nav class="tabs" aria-label="Dashboard sections" role="tablist">
+        <button id="sessions-tab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="sessions-panel">
+          Sessions
+        </button>
+        <button id="local-configuration-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="local-configuration-panel">
+          Local Configuration
+        </button>
+      </nav>
 
-      <section id="dashboard-content" hidden>
-        <div id="summary" class="summary" aria-label="Server summary"></div>
+      <section id="sessions-panel" role="tabpanel" aria-labelledby="sessions-tab">
+        <section id="notice" class="notice" hidden></section>
 
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">ACTIVE STATE</p>
-            <h2>Browser runtimes</h2>
+        <section id="dashboard-content" hidden>
+          <div id="summary" class="summary" aria-label="Server summary"></div>
+
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">ACTIVE STATE</p>
+              <h2>Browser runtimes</h2>
+            </div>
+            <p class="muted">Updates automatically every 2 seconds</p>
           </div>
-          <p class="muted">Updates automatically every 2 seconds</p>
+
+          <div id="runtime-list" class="runtime-list"></div>
+        </section>
+      </section>
+
+      <section id="local-configuration-panel" role="tabpanel" aria-labelledby="local-configuration-tab" hidden>
+        <div class="section-heading local-heading">
+          <div>
+            <p class="eyebrow">THIS BROWSER</p>
+            <h2>Local Configuration</h2>
+          </div>
+          <p class="muted">Stored for this browser and Server origin only</p>
         </div>
 
-        <div id="runtime-list" class="runtime-list"></div>
+        <form id="local-configuration-form" class="configuration-card">
+          <div class="configuration-field font-family-field">
+            <label for="local-font-family">Font family</label>
+            <input id="local-font-family" type="text" maxlength="256" list="font-family-suggestions" placeholder="Server default" autocomplete="off" />
+            <datalist id="font-family-suggestions">
+              <option value="Cascadia Mono"></option>
+              <option value="Cascadia Code"></option>
+              <option value="Consolas"></option>
+              <option value="JetBrains Mono"></option>
+              <option value="Fira Code"></option>
+              <option value="monospace"></option>
+            </datalist>
+            <small>Choose an installed font or enter a CSS font-family value. Leave empty to use the Server default.</small>
+          </div>
+
+          <div class="configuration-field">
+            <label for="local-font-size">Font size</label>
+            <input id="local-font-size" type="number" min="8" max="72" step="1" placeholder="Server default" />
+            <small>Between 8 and 72 pixels. Leave empty to use the Server default.</small>
+          </div>
+
+          <div class="configuration-field">
+            <label for="local-theme">Theme</label>
+            <select id="local-theme">
+              <option value="">Server default</option>
+            </select>
+            <small>Applied to every Terminal page opened from this browser origin.</small>
+          </div>
+
+          <div class="configuration-origin">
+            <span>Storage origin</span>
+            <code id="local-origin"></code>
+          </div>
+
+          <div class="configuration-actions">
+            <button class="button" type="submit">Save local settings</button>
+            <button id="reset-local-configuration" class="button secondary" type="button">Use Server defaults</button>
+            <span id="local-configuration-status" class="muted" role="status"></span>
+          </div>
+        </form>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>
