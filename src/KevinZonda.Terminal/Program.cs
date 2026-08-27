@@ -52,6 +52,7 @@ internal static class Program
             }
 
             ConfigureConHostIntegrityPrompt();
+            RecentWorkspaceService.RecordAndUpdate(startingDirectory);
             Application.Run(new MainForm(startingDirectory));
             return 0;
         }

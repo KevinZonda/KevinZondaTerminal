@@ -13,6 +13,7 @@ KevinZonda Terminal 是一个面向 Windows 的最小化 Terminal Emulator MVP�
 - codex 等 inline TUI 的历史通过 DECSTBM region scroll 进入终端 scrollback，滚轮可直接查看（依赖 passthrough ConPTY）。
 - vim、less 等 alternate screen 应用中，滚轮自动转为方向键（alternate scroll）。
 - 新 Tab / 分屏按当前 Pane 尺寸创建 ConPTY，减少全屏 TUI 的二次重绘。
+- Windows 任务栏右键菜单显示最近打开的 10 个 Workspace，点击后以对应目录启动新窗口。
 - 底部状态栏会在终端会话中运行 Codex 或 Kimi Code 时显示用量，并每 5 分钟刷新。
 - 关闭 Pane、Tab 或应用时回收相应 Shell、ConPTY 和 Win32 handle。
 
@@ -27,6 +28,9 @@ KevinZonda Terminal 是一个面向 Windows 的最小化 Terminal Emulator MVP�
 | `Ctrl+Shift+V` | 粘贴到聚焦终端 |
 
 快捷键只在 KevinZonda Terminal 位于前台时生效。
+
+最近 Workspace 只记录窗口的启动目录，不恢复 Tab、Pane 或 Shell 状态；记录保存在
+`%USERPROFILE%\.kterm\recent_workspaces.json`。不存在的目录会自动移除，在 Windows Jump List 中手动删除的项目也会受到尊重。
 
 ## 构建和运行
 
