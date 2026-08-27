@@ -17,7 +17,8 @@ internal sealed record CertificateSubjectInformation(
     string? StateOrProvince = null,
     string? Locality = null,
     string? Organization = null,
-    string? OrganizationalUnit = null);
+    string? OrganizationalUnit = null,
+    string CertificateAuthorityCommonName = "KTerm Local Certificate Authority");
 
 internal static class SelfSignedCertificateGenerator
 {
@@ -71,7 +72,7 @@ internal static class SelfSignedCertificateGenerator
         var notBefore = DateTimeOffset.UtcNow.AddMinutes(-5);
         using var authorityKey = RSA.Create(3072);
         var authorityRequest = new CertificateRequest(
-            BuildDistinguishedName("KTerm Local Certificate Authority", subject),
+            BuildDistinguishedName(subject.CertificateAuthorityCommonName, subject),
             authorityKey,
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
@@ -236,8 +237,15 @@ internal static class SelfSignedCertificateGenerator
             NormalizeOptionalSubjectValue(value.StateOrProvince, "State/province"),
             NormalizeOptionalSubjectValue(value.Locality, "Locality"),
             NormalizeOptionalSubjectValue(value.Organization, "Organization"),
-            NormalizeOptionalSubjectValue(value.OrganizationalUnit, "Organizational unit"));
+            NormalizeOptionalSubjectValue(value.OrganizationalUnit, "Organizational unit"),
+            NormalizeRequiredSubjectValue(
+                value.CertificateAuthorityCommonName,
+                "CA common name"));
     }
+
+    private static string NormalizeRequiredSubjectValue(string? value, string fieldName) =>
+        NormalizeOptionalSubjectValue(value, fieldName)
+        ?? throw new CertificateGenerationException($"{fieldName} is required.");
 
     private static string? NormalizeOptionalSubjectValue(
         string? value,

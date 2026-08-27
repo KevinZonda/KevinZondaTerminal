@@ -39,7 +39,8 @@ static void TestGeneratedCertificate()
                 StateOrProvince: "Shanghai",
                 Locality: "Shanghai",
                 Organization: "KevinZonda Terminal",
-                OrganizationalUnit: "Server"));
+                OrganizationalUnit: "Server",
+                CertificateAuthorityCommonName: "KTerm Test Root CA"));
         Equal("kterm-backend.example.test", output.Domain);
         True(File.Exists(output.PublicCertificatePath));
         True(File.Exists(output.PrivateKeyPath));
@@ -59,6 +60,12 @@ static void TestGeneratedCertificate()
         True(serverCertificate.Subject.Contains("C=CN", StringComparison.Ordinal));
         True(serverCertificate.Subject.Contains("O=KevinZonda Terminal", StringComparison.Ordinal));
         True(serverCertificate.Subject.Contains("OU=Server", StringComparison.Ordinal));
+        Equal(
+            "KTerm Test Root CA",
+            authorityCertificate.GetNameInfo(X509NameType.SimpleName, forIssuer: false));
+        Equal(
+            "KTerm Test Root CA",
+            serverCertificate.GetNameInfo(X509NameType.SimpleName, forIssuer: true));
 
         using var chain = new X509Chain();
         chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
@@ -169,6 +176,9 @@ static void TestUnsafeDomain()
     Throws<CertificateGenerationException>(() =>
         SelfSignedCertificateGenerator.ValidateSubjectInformation(
             new CertificateSubjectInformation(CountryOrRegion: "China")));
+    Throws<CertificateGenerationException>(() =>
+        SelfSignedCertificateGenerator.ValidateSubjectInformation(
+            new CertificateSubjectInformation(CertificateAuthorityCommonName: "")));
 }
 
 static string ValueAfter(IReadOnlyList<string> arguments, string name)

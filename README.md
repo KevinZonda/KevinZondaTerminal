@@ -94,9 +94,10 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
 
 Launcher Settings 支持选择 PEM 格式的 Public certificate 和 Private key；两者必须同时配置、能够互相匹配，
 且私钥不能加密。Launcher 会把路径转换为 Kestrel 的默认 HTTPS 证书参数，不在配置文件中保存证书内容或密码。
-`Generate self-signed certificate...` 会要求输入证书域名，并可填写 Country/Region、State/Province、
-Locality、Organization 和 Organizational Unit 等证书 Subject 信息；除域名外均可留空，Country/Region
-使用两位国家代码（例如 `CN` 或 `US`）。然后生成：
+`Generate self-signed certificate...` 会要求输入 Server 域名以及 CA Common Name（默认为
+`KTerm Local Certificate Authority`），并可填写 Country/Region、State/Province、Locality、
+Organization 和 Organizational Unit 等证书 Subject 信息；后五项可留空，Country/Region 使用两位国家代码
+（例如 `CN` 或 `US`）。Server 证书的 CN 自动使用 Server 域名。然后生成：
 
 ```text
 %USERPROFILE%\.kterm\cert\<domain>\pub.pem

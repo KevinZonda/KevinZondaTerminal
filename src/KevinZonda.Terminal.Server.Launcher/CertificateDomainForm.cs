@@ -7,6 +7,11 @@ internal sealed class CertificateDomainForm : Form
         Dock = DockStyle.Fill,
         Text = "kterm-backend.example.com"
     };
+    private readonly TextBox _certificateAuthorityCommonName = new()
+    {
+        Dock = DockStyle.Fill,
+        Text = "KTerm Local Certificate Authority"
+    };
     private readonly TextBox _countryOrRegion = new() { Dock = DockStyle.Fill, MaxLength = 2 };
     private readonly TextBox _stateOrProvince = new() { Dock = DockStyle.Fill };
     private readonly TextBox _locality = new() { Dock = DockStyle.Fill };
@@ -17,7 +22,7 @@ internal sealed class CertificateDomainForm : Form
     {
         Text = "Generate Self-Signed Certificate";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(580, 390);
+        ClientSize = new Size(600, 430);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -46,38 +51,39 @@ internal sealed class CertificateDomainForm : Form
             ColumnCount = 2,
             Dock = DockStyle.Fill,
             Padding = new Padding(16),
-            RowCount = 9
+            RowCount = 10
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 6; row++)
+        for (var row = 0; row < 7; row++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        AddField(layout, "Certificate domain", _domain, 0);
-        AddField(layout, "Country/region (C)", _countryOrRegion, 1);
-        AddField(layout, "State/province (ST)", _stateOrProvince, 2);
-        AddField(layout, "Locality (L)", _locality, 3);
-        AddField(layout, "Organization (O)", _organization, 4);
-        AddField(layout, "Organizational unit (OU)", _organizationalUnit, 5);
+        AddField(layout, "Server name / domain (CN)", _domain, 0);
+        AddField(layout, "CA common name (CN)", _certificateAuthorityCommonName, 1);
+        AddField(layout, "Country/region (C)", _countryOrRegion, 2);
+        AddField(layout, "State/province (ST)", _stateOrProvince, 3);
+        AddField(layout, "Locality (L)", _locality, 4);
+        AddField(layout, "Organization (O)", _organization, 5);
+        AddField(layout, "Organizational unit (OU)", _organizationalUnit, 6);
         layout.Controls.Add(new Label
         {
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Margin = new Padding(3, 6, 3, 3),
             Text = "Country/region is an optional two-letter code. Other subject fields are optional."
-        }, 1, 6);
+        }, 1, 7);
         layout.Controls.Add(new Label
         {
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Margin = new Padding(3, 6, 3, 3),
             Text = "The certificate also includes localhost, 127.0.0.1, and ::1."
-        }, 1, 7);
-        layout.Controls.Add(buttons, 1, 8);
+        }, 1, 8);
+        layout.Controls.Add(buttons, 1, 9);
         Controls.Add(layout);
 
         AcceptButton = saveButton;
@@ -105,7 +111,8 @@ internal sealed class CertificateDomainForm : Form
                 _stateOrProvince.Text,
                 _locality.Text,
                 _organization.Text,
-                _organizationalUnit.Text);
+                _organizationalUnit.Text,
+                _certificateAuthorityCommonName.Text);
             SelfSignedCertificateGenerator.ValidateSubjectInformation(SubjectInformation);
             DialogResult = DialogResult.OK;
             Close();
