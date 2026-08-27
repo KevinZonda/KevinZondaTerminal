@@ -7,6 +7,7 @@ using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.HttpOverrides;
 
 if (args.Length > 0 && string.Equals(args[0], "auth", StringComparison.OrdinalIgnoreCase))
 {
@@ -55,9 +56,14 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.SameSite = SameSiteMode.Strict;
     options.HeaderName = "X-KTerm-CSRF";
 });
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
 ServerAuthentication.AddServices(builder.Services, serverAuthentication);
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseWebSockets(new WebSocketOptions
 {
     KeepAliveInterval = TimeSpan.FromSeconds(30)

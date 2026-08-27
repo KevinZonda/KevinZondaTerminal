@@ -27,6 +27,16 @@ if (!loginLocation || !new URL(loginLocation, baseUrl).pathname.startsWith('/aut
   throw new Error(`Anonymous page did not redirect to /auth/login: ${loginLocation}`);
 }
 
+const forwardedAnonymousPage = await fetch(baseUrl, {
+  redirect: 'manual',
+  headers: { 'X-Forwarded-Proto': 'https' }
+});
+equal(302, forwardedAnonymousPage.status, 'forwarded HTTPS anonymous page status');
+const forwardedLoginLocation = forwardedAnonymousPage.headers.get('location');
+if (!forwardedLoginLocation || new URL(forwardedLoginLocation, baseUrl).protocol !== 'https:') {
+  throw new Error(`Forwarded HTTPS login redirect is invalid: ${forwardedLoginLocation}`);
+}
+
 const loginUrl = new URL(loginLocation, baseUrl);
 const challenge = await fetch(loginUrl, { redirect: 'manual' });
 equal(401, challenge.status, 'Basic challenge status');
@@ -48,7 +58,10 @@ equal(401, wrongUser.status, 'wrong user status');
 
 const login = await fetch(loginUrl, {
   redirect: 'manual',
-  headers: { Authorization: basic('kterm', password) }
+  headers: {
+    Authorization: basic('kterm', password),
+    'X-Forwarded-Proto': 'https'
+  }
 });
 equal(302, login.status, 'successful login status');
 const setCookie = login.headers.get('set-cookie');
@@ -58,6 +71,9 @@ if (!setCookie) {
 const cookie = setCookie.split(';', 1)[0];
 if (!cookie.startsWith('kterm.auth=')) {
   throw new Error(`Unexpected authentication cookie: ${cookie}`);
+}
+if (!setCookie.split(';').some(part => part.trim().toLowerCase() === 'secure')) {
+  throw new Error('Forwarded HTTPS authentication cookie is missing the Secure attribute.');
 }
 
 const page = await fetch(baseUrl, {

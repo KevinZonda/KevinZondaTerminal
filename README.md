@@ -135,6 +135,28 @@ Terminal 仍要求连接 Server，不提供离线 Shell。浏览器的完整安�
 server.cmd --auth-mode required --auth-file C:\path\server_auth.json
 ```
 
+### Nginx 反向代理
+
+仓库提供了一份可用于 `sites-enabled` 的简单配置：[docs/nginx/kterm.conf](docs/nginx/kterm.conf)。示例假设
+Nginx 与 Server 位于同一台主机，并将请求转发到 `127.0.0.1:7132`；请先修改 `server_name`，再启用配置：
+
+```bash
+sudo cp docs/nginx/kterm.conf /etc/nginx/sites-available/kterm
+sudo ln -s /etc/nginx/sites-available/kterm /etc/nginx/sites-enabled/kterm
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Server 建议只监听回环地址，避免客户端绕过 Nginx 直接访问后端：
+
+```powershell
+kterm-server --urls http://127.0.0.1:7132 --auth-mode required
+```
+
+配置已经转发真实客户端地址、原始协议，并为 `/ws` 设置 WebSocket Upgrade 和长连接超时。Server 只信任来自
+回环地址的 Forwarded Headers；如果 Nginx 位于另一台主机，需要同时限制后端端口的网络访问，并额外配置可信代理地址。
+公网部署建议在 Nginx 上启用 HTTPS；这也是远程浏览器完整启用 Web App 安装和 Service Worker 的前提。
+
 每个浏览器页面拥有独立的 Workspace、ConPTY 和 Shell。WebSocket 断开后，页面会按指数退避自动重连，
 并恢复原来的 ConPTY、Shell PID 和未确认输出。刷新当前页面时，还会恢复 Workspace、Pane、Tab、
 活动项以及终端滚屏历史，并继续使用刷新前的 Shell；普通的新页面仍会创建独立 Runtime。
