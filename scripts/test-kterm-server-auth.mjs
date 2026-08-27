@@ -6,6 +6,10 @@ const password = process.env.KTERM_TEST_PASSWORD;
 if (!password) {
   throw new Error('KTERM_TEST_PASSWORD is required.');
 }
+const icpRegistration = process.env.KTERM_TEST_ICP_REGISTRATION;
+if (!icpRegistration) {
+  throw new Error('KTERM_TEST_ICP_REGISTRATION is required.');
+}
 
 function equal(expected, actual, message) {
   if (expected !== actual) {
@@ -45,6 +49,12 @@ const loginCsrfToken = loginHtml.match(
   /name="__RequestVerificationToken" value="([^"]+)"/)?.[1];
 if (!loginCsrfCookie || !loginCsrfToken || !loginHtml.includes('<form method="post" action="/auth/login"')) {
   throw new Error('The login page did not provide its form and CSRF credentials.');
+}
+if (!loginHtml.includes('href="https://beian.miit.gov.cn/"') ||
+    !loginHtml.includes('target="_blank"') ||
+    !loginHtml.includes('rel="noopener noreferrer"') ||
+    !loginHtml.includes(icpRegistration)) {
+  throw new Error('The login page did not render the configured ICP registration link.');
 }
 
 const missingLoginCsrf = await fetch(loginUrl, {

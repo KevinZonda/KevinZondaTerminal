@@ -78,6 +78,7 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
     "urls": "http://0.0.0.0:7132",
     "authMode": "auto",
     "customUsername": "kterm",
+    "icpRegistration": null,
     "workingDirectory": null,
     "runtimeRetentionMinutes": 30,
     "certificate": {
@@ -145,6 +146,9 @@ kterm-server auth init
 
 配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示 KTerm 登录页面；用户名默认为
 `kterm`，可通过 `--custom-username <name>` 覆盖。用户名大小写敏感，不能包含冒号或控制字符，最长 128 字符。
+Launcher Settings 中的 `ICP registration` 可配置登录页底部显示的备案号，例如
+`沪ICP备12345678号-1`；Server 也支持 `--icp-registration <number>`。备案号链接固定指向
+`https://beian.miit.gov.cn/`，配置为空时登录页不会生成备案元素。
 表单使用 CSRF Token，验证成功后 Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该
 Cookie 鉴权；密码只在提交登录表单时发送。登录页面由独立的 `KevinZonda.Terminal.Server.Login` 项目嵌入
 Server，不进入桌面 Terminal 或 Dashboard 前端资源。`/healthz` 保持公开。

@@ -77,6 +77,21 @@ internal sealed record LauncherConfiguration
             throw new LauncherConfigurationException(
                 "The custom username cannot contain a colon or control characters.");
         }
+        var icpRegistration = Server.IcpRegistration?.Trim();
+        if (string.IsNullOrEmpty(icpRegistration))
+        {
+            icpRegistration = null;
+        }
+        else if (icpRegistration.Length > 128)
+        {
+            throw new LauncherConfigurationException(
+                "The ICP registration number must be 128 characters or fewer.");
+        }
+        else if (icpRegistration.Any(char.IsControl))
+        {
+            throw new LauncherConfigurationException(
+                "The ICP registration number cannot contain control characters.");
+        }
         if (!double.IsFinite(Server.RuntimeRetentionMinutes) ||
             Server.RuntimeRetentionMinutes is < 0.1 or > 1440)
         {
@@ -141,6 +156,7 @@ internal sealed record LauncherConfiguration
                 Urls = urls,
                 AuthMode = authMode,
                 CustomUsername = customUsername,
+                IcpRegistration = icpRegistration,
                 WorkingDirectory = workingDirectory,
                 Certificate = certificate,
                 AdditionalArguments = additionalArguments
@@ -185,6 +201,11 @@ internal sealed record LauncherConfiguration
         arguments.Add(normalized.Server.AuthMode);
         arguments.Add("--custom-username");
         arguments.Add(normalized.Server.CustomUsername);
+        if (normalized.Server.IcpRegistration is not null)
+        {
+            arguments.Add("--icp-registration");
+            arguments.Add(normalized.Server.IcpRegistration);
+        }
         arguments.Add("--working-directory");
         arguments.Add(normalized.Server.WorkingDirectory ?? DefaultWorkingDirectory);
         arguments.Add("--runtime-retention-minutes");
@@ -269,6 +290,7 @@ internal sealed record LauncherServerConfiguration
     public string Urls { get; init; } = "http://0.0.0.0:7132";
     public string AuthMode { get; init; } = "auto";
     public string CustomUsername { get; init; } = "kterm";
+    public string? IcpRegistration { get; init; }
     public string? WorkingDirectory { get; init; }
     public double RuntimeRetentionMinutes { get; init; } = 30;
     public LauncherCertificateConfiguration Certificate { get; init; } = new();

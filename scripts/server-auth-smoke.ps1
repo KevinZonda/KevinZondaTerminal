@@ -11,6 +11,7 @@ $serverExecutable = Join-Path $repositoryRoot "src\KevinZonda.Terminal.Server\bi
 $testScript = Join-Path $repositoryRoot 'scripts\test-kterm-server-auth.mjs'
 $testPassword = 'kterm-server-auth-smoke-password'
 $additionalPassword = 'kterm-server-auth-smoke-password-rotated'
+$testIcpRegistration = 'ICP-Test-12345678-1'
 $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $temporaryDirectory = [IO.Path]::GetFullPath((Join-Path $temporaryRoot "kterm-server-auth-$([Guid]::NewGuid().ToString('N'))"))
 if (-not $temporaryDirectory.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
@@ -51,7 +52,11 @@ try {
 
     $server = Start-Process `
         -FilePath $serverExecutable `
-        -ArgumentList @('--urls', $url, '--auth-mode', 'required', '--auth-file', $authFile) `
+        -ArgumentList @(
+            '--urls', $url,
+            '--auth-mode', 'required',
+            '--auth-file', $authFile,
+            '--icp-registration', $testIcpRegistration) `
         -WorkingDirectory $repositoryRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $authenticatedStandardOutput `
@@ -63,7 +68,10 @@ try {
         Start-Sleep -Milliseconds 200
         $server.Refresh()
         if ($server.HasExited) {
-            throw "kterm-server exited during authenticated startup with code $($server.ExitCode)."
+            $authenticatedLogs =
+                (Get-Content -Raw -LiteralPath $authenticatedStandardOutput) +
+                (Get-Content -Raw -LiteralPath $authenticatedStandardError)
+            throw "kterm-server exited during authenticated startup with code $($server.ExitCode).`n$authenticatedLogs"
         }
         try {
             $health = Invoke-WebRequest -UseBasicParsing "$url/healthz" -TimeoutSec 2
@@ -79,6 +87,7 @@ try {
     }
 
     $env:KTERM_TEST_PASSWORD = $testPassword
+    $env:KTERM_TEST_ICP_REGISTRATION = $testIcpRegistration
     & node $testScript $url
     if ($LASTEXITCODE -ne 0) {
         $authenticatedLogs =
@@ -150,6 +159,7 @@ try {
 }
 finally {
     Remove-Item Env:KTERM_TEST_PASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:KTERM_TEST_ICP_REGISTRATION -ErrorAction SilentlyContinue
     if ($null -ne $server -and -not $server.HasExited) {
         Stop-Process -Id $server.Id
         $null = $server.WaitForExit(5000)

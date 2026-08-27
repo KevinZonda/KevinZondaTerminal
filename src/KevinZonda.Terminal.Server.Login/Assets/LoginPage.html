@@ -21,6 +21,9 @@
       button:hover { border-color: #6689ef; background: #334979; }
       .error { margin: 0; padding: 11px 13px; border: 1px solid #713744; border-radius: 9px; color: #ffabb9; background: rgba(76,28,38,.42); font-size: 13px; }
       .security { margin: 19px 0 0; color: #687385; font-size: 12px; line-height: 1.5; }
+      .registration { margin-top: 14px; text-align: center; }
+      .registration a { color: #687385; font-size: 12px; text-decoration: none; }
+      .registration a:hover { color: #9ba8bb; text-decoration: underline; }
     </style>
   </head>
   <body>
@@ -43,6 +46,7 @@
         <button type="submit">Sign in</button>
       </form>
       <p class="security">Credentials are submitted only when signing in. Use HTTPS for every remote connection.</p>
+      {{ICP_REGISTRATION}}
     </main>
   </body>
 </html>

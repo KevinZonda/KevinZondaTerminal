@@ -41,6 +41,7 @@ if (string.IsNullOrWhiteSpace(startingDirectory) || !Directory.Exists(startingDi
 }
 startingDirectory = Path.GetFullPath(startingDirectory);
 var serverAuthentication = await ServerAuthentication.LoadAsync(builder.Configuration);
+var icpRegistration = NormalizeIcpRegistration(builder.Configuration["icp-registration"]);
 
 builder.Services.AddSingleton(new SettingsStore());
 var runtimeRetentionMinutes = builder.Configuration.GetValue<double?>("runtime-retention-minutes") ?? 30;
@@ -84,7 +85,11 @@ if (serverAuthentication.Enabled)
             return;
         }
 
-        await WriteLoginPageAsync(context, antiforgery, returnUrl).ConfigureAwait(false);
+        await WriteLoginPageAsync(
+            context,
+            antiforgery,
+            returnUrl,
+            icpRegistration: icpRegistration).ConfigureAwait(false);
     }).AllowAnonymous();
 
     app.MapPost(
@@ -122,6 +127,7 @@ if (serverAuthentication.Enabled)
                         returnUrl,
                         userName,
                         "The username or password is incorrect.",
+                        icpRegistration,
                         StatusCodes.Status401Unauthorized).ConfigureAwait(false);
                     return;
                 }
@@ -143,6 +149,7 @@ if (serverAuthentication.Enabled)
                     antiforgery,
                     returnUrl,
                     error: "The login form expired. Please try again.",
+                    icpRegistration: icpRegistration,
                     statusCode: StatusCodes.Status400BadRequest).ConfigureAwait(false);
             }
         }).AllowAnonymous();
@@ -392,6 +399,7 @@ static async Task WriteLoginPageAsync(
     string returnUrl,
     string? userName = null,
     string? error = null,
+    string? icpRegistration = null,
     int statusCode = StatusCodes.Status200OK)
 {
     var csrfToken = antiforgery.GetAndStoreTokens(context).RequestToken
@@ -406,8 +414,28 @@ static async Task WriteLoginPageAsync(
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     await context.Response.WriteAsync(
-        EmbeddedLoginPage.Render(csrfToken, returnUrl, userName, error),
+        EmbeddedLoginPage.Render(csrfToken, returnUrl, userName, error, icpRegistration),
         context.RequestAborted).ConfigureAwait(false);
+}
+
+static string? NormalizeIcpRegistration(string? value)
+{
+    var registration = value?.Trim();
+    if (string.IsNullOrEmpty(registration))
+    {
+        return null;
+    }
+    if (registration.Length > 128)
+    {
+        throw new InvalidOperationException(
+            "The ICP registration number must be 128 characters or fewer.");
+    }
+    if (registration.Any(char.IsControl))
+    {
+        throw new InvalidOperationException(
+            "The ICP registration number cannot contain control characters.");
+    }
+    return registration;
 }
 
 namespace KevinZonda.Terminal.Server

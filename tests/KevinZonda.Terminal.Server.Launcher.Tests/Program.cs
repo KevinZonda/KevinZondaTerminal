@@ -1,5 +1,6 @@
 using System.Security.Cryptography.X509Certificates;
 using KevinZonda.Terminal.Server.Launcher;
+using KevinZonda.Terminal.Server.Login;
 using KevinZonda.Terminal.Server.UserAuth;
 
 var tests = new (string Name, Action Run)[]
@@ -9,6 +10,7 @@ var tests = new (string Name, Action Run)[]
     ("Launcher emits Kestrel PEM arguments", TestLauncherArguments),
     ("Launcher rejects incomplete or mismatched PEM files", TestInvalidCertificateConfiguration),
     ("Launcher validates custom usernames", TestCustomUsername),
+    ("Launcher configures the login ICP registration", TestIcpRegistration),
     ("Credential Manager adds and deletes passwords", TestCredentialManager),
     ("Credential Manager generates strong random passwords", TestGeneratedPassword),
     ("Launcher resolves the effective authentication file", TestAuthFileResolver),
@@ -109,6 +111,7 @@ static void TestLauncherArguments()
                 Urls = "http://127.0.0.1:7132;https://127.0.0.1:7133",
                 AuthMode = "required",
                 CustomUsername = "operator",
+                IcpRegistration = "沪ICP备12345678号-1",
                 Certificate = new LauncherCertificateConfiguration
                 {
                     PublicCertificatePath = output.PublicCertificatePath,
@@ -128,6 +131,7 @@ static void TestLauncherArguments()
             "http://127.0.0.1:7132;https://127.0.0.1:7133",
             ValueAfter(arguments, "--urls"));
         Equal("operator", ValueAfter(arguments, "--custom-username"));
+        Equal("沪ICP备12345678号-1", ValueAfter(arguments, "--icp-registration"));
 
         var path = Path.Combine(directory, "server_launcher.json");
         var store = new LauncherConfigurationStore(path);
@@ -136,6 +140,7 @@ static void TestLauncherArguments()
         Equal(output.PublicCertificatePath, loaded.Server.Certificate.PublicCertificatePath);
         Equal(output.PrivateKeyPath, loaded.Server.Certificate.PrivateKeyPath);
         Equal("operator", loaded.Server.CustomUsername);
+        Equal("沪ICP备12345678号-1", loaded.Server.IcpRegistration);
     });
 }
 
@@ -201,6 +206,51 @@ static void TestCustomUsername()
     {
         Server = new LauncherServerConfiguration { CustomUsername = new string('a', 129) }
     }.Normalize());
+}
+
+static void TestIcpRegistration()
+{
+    var normalized = new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration
+        {
+            IcpRegistration = " 沪ICP备12345678号-1 "
+        }
+    }.Normalize();
+    Equal("沪ICP备12345678号-1", normalized.Server.IcpRegistration);
+    Equal(
+        "沪ICP备12345678号-1",
+        ValueAfter(normalized.BuildServerArguments([]), "--icp-registration"));
+
+    var empty = new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration { IcpRegistration = " " }
+    }.Normalize();
+    Equal<string?>(null, empty.Server.IcpRegistration);
+    False(empty.BuildServerArguments([]).Contains("--icp-registration", StringComparer.Ordinal));
+
+    Throws<LauncherConfigurationException>(() => new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration { IcpRegistration = "沪ICP备\n12345678号" }
+    }.Normalize());
+    Throws<LauncherConfigurationException>(() => new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration { IcpRegistration = new string('a', 129) }
+    }.Normalize());
+
+    var rendered = EmbeddedLoginPage.Render(
+        "csrf",
+        "/",
+        icpRegistration: "沪ICP备12345678号-1<script>alert(1)</script>");
+    True(rendered.Contains("https://beian.miit.gov.cn/", StringComparison.Ordinal));
+    True(rendered.Contains("target=\"_blank\"", StringComparison.Ordinal));
+    True(rendered.Contains("rel=\"noopener noreferrer\"", StringComparison.Ordinal));
+    True(rendered.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", StringComparison.Ordinal));
+    False(rendered.Contains("<script>alert(1)</script>", StringComparison.Ordinal));
+
+    var withoutRegistration = EmbeddedLoginPage.Render("csrf", "/");
+    False(withoutRegistration.Contains("beian.miit.gov.cn", StringComparison.Ordinal));
+    False(withoutRegistration.Contains("class=\"registration\"", StringComparison.Ordinal));
 }
 
 static void TestCredentialManager()
