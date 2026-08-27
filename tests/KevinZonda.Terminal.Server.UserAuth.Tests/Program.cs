@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Configuration round trip", TestConfigurationRoundTrip),
     ("Create refuses to overwrite", TestCreateRefusesOverwrite),
     ("Empty configuration can be inspected by auto mode", TestLoadAllowingEmpty),
+    ("Empty configuration can be saved explicitly", TestSaveAllowingEmpty),
     ("Malformed configurations fail closed", TestMalformedConfigurations),
     ("Unsafe PHC parameters are rejected", TestUnsafeParameters),
 };
@@ -115,6 +116,20 @@ static async Task TestLoadAllowingEmpty()
         var path = Path.Combine(directory, "server_auth.json");
         var store = new ServerAuthStore(path);
         await File.WriteAllTextAsync(path, """{"allowedHash":[]}""");
+
+        var configuration = await store.LoadAllowingEmptyAsync();
+        Equal(0, configuration.AllowedHash.Length);
+        await ThrowsAsync<AuthConfigurationException>(() => store.LoadAsync());
+    });
+}
+
+static async Task TestSaveAllowingEmpty()
+{
+    await WithTemporaryDirectory(async directory =>
+    {
+        var path = Path.Combine(directory, "server_auth.json");
+        var store = new ServerAuthStore(path);
+        await store.SaveAllowingEmptyAsync(new ServerAuthConfiguration());
 
         var configuration = await store.LoadAllowingEmptyAsync();
         Equal(0, configuration.AllowedHash.Length);

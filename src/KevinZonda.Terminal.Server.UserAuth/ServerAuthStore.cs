@@ -90,12 +90,17 @@ public sealed class ServerAuthStore
     public Task CreateAsync(
         ServerAuthConfiguration configuration,
         CancellationToken cancellationToken = default) =>
-        WriteAsync(configuration, overwrite: false, cancellationToken);
+        WriteAsync(configuration, overwrite: false, allowEmpty: false, cancellationToken);
 
     public Task SaveAsync(
         ServerAuthConfiguration configuration,
         CancellationToken cancellationToken = default) =>
-        WriteAsync(configuration, overwrite: true, cancellationToken);
+        WriteAsync(configuration, overwrite: true, allowEmpty: false, cancellationToken);
+
+    public Task SaveAllowingEmptyAsync(
+        ServerAuthConfiguration configuration,
+        CancellationToken cancellationToken = default) =>
+        WriteAsync(configuration, overwrite: true, allowEmpty: true, cancellationToken);
 
     public void Validate(ServerAuthConfiguration configuration)
     {
@@ -133,9 +138,10 @@ public sealed class ServerAuthStore
     private async Task WriteAsync(
         ServerAuthConfiguration configuration,
         bool overwrite,
+        bool allowEmpty,
         CancellationToken cancellationToken)
     {
-        Validate(configuration);
+        Validate(configuration, allowEmpty);
         var directory = Path.GetDirectoryName(ConfigurationPath)
             ?? throw new AuthConfigurationException("The server authentication path has no parent directory.");
         Directory.CreateDirectory(directory);

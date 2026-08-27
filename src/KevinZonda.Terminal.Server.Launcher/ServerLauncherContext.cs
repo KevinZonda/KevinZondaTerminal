@@ -6,11 +6,13 @@ internal sealed class ServerLauncherContext : ApplicationContext
     private readonly LauncherLogBuffer _logs = new();
     private readonly LauncherConfigurationStore _configurationStore;
     private readonly string[] _commandLineServerArguments;
+    private readonly string _serverWorkingDirectory;
     private readonly ServerProcessHost _server;
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _startItem = new("Start");
     private readonly ToolStripMenuItem _stopItem = new("Stop");
     private readonly ToolStripMenuItem _settingsItem = new("Settings...");
+    private readonly ToolStripMenuItem _credentialsItem = new("Credential Management...");
     private readonly ToolStripMenuItem _logsItem = new("Logs");
     private readonly ToolStripMenuItem _exitItem = new("Exit");
     private readonly NotifyIcon _notifyIcon;
@@ -34,8 +36,10 @@ internal sealed class ServerLauncherContext : ApplicationContext
         _commandLineServerArguments = [.. commandLineServerArguments];
         _configurationValid = configurationError is null;
         _dispatcher.CreateControl();
+        var serverExecutable = ServerExecutableLocator.Find();
+        _serverWorkingDirectory = Path.GetDirectoryName(serverExecutable) ?? AppContext.BaseDirectory;
         _server = new ServerProcessHost(
-            ServerExecutableLocator.Find(),
+            serverExecutable,
             configuration.BuildServerArguments(_commandLineServerArguments),
             _logs);
         _server.StateChanged += HandleServerStateChanged;
@@ -44,12 +48,14 @@ internal sealed class ServerLauncherContext : ApplicationContext
         _startItem.Click += async (_, _) => await RunOperationAsync(_server.StartAsync);
         _stopItem.Click += async (_, _) => await RunOperationAsync(_server.StopAsync);
         _settingsItem.Click += async (_, _) => await ShowSettingsAsync();
+        _credentialsItem.Click += async (_, _) => await ShowCredentialManagementAsync();
         _logsItem.Click += (_, _) => ShowLogs();
         _exitItem.Click += async (_, _) => await ExitAsync();
         _menu.Items.Add(_startItem);
         _menu.Items.Add(_stopItem);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(_settingsItem);
+        _menu.Items.Add(_credentialsItem);
         _menu.Items.Add(_logsItem);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(_exitItem);
@@ -187,6 +193,63 @@ internal sealed class ServerLauncherContext : ApplicationContext
         }
     }
 
+    private async Task ShowCredentialManagementAsync()
+    {
+        if (_operationInProgress || _exitRequested)
+        {
+            return;
+        }
+
+        _operationInProgress = true;
+        UpdateMenuState();
+        try
+        {
+            var serverArguments = _configuration.BuildServerArguments(_commandLineServerArguments);
+            var authenticationPath = ServerAuthFileArgumentResolver.Resolve(
+                serverArguments,
+                _serverWorkingDirectory);
+            using var form = new CredentialManagementForm(authenticationPath);
+            form.ShowDialog();
+            if (!form.CredentialsChanged)
+            {
+                return;
+            }
+
+            _logs.Add(
+                LauncherLogSource.System,
+                $"Updated Server credentials: {authenticationPath}");
+            if (!_server.IsRunning || MessageBox.Show(
+                    form.CredentialCount == 0
+                        ? "The credential file is now empty. Restarting in auto mode will disable password " +
+                          "authentication; required mode will fail to start. Restart Server now?"
+                        : "Server credentials have changed. Restart Server now to apply them?",
+                    "KTerm Server Launcher",
+                    MessageBoxButtons.YesNo,
+                    form.CredentialCount == 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Question) !=
+                DialogResult.Yes)
+            {
+                return;
+            }
+
+            await _server.StopAsync();
+            await _server.StartAsync();
+        }
+        catch (Exception exception)
+        {
+            ReportError(exception);
+            MessageBox.Show(
+                exception.Message,
+                "KTerm Credential Management",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _operationInProgress = false;
+            UpdateMenuState();
+        }
+    }
+
     private async Task ExitAsync()
     {
         if (_exitRequested || _operationInProgress)
@@ -273,6 +336,7 @@ internal sealed class ServerLauncherContext : ApplicationContext
             !running;
         _stopItem.Enabled = !_exitRequested && !_operationInProgress && running;
         _settingsItem.Enabled = !_exitRequested && !_operationInProgress;
+        _credentialsItem.Enabled = !_exitRequested && !_operationInProgress;
         _logsItem.Enabled = !_exitRequested;
         _exitItem.Enabled = !_exitRequested && !_operationInProgress;
         _notifyIcon.Text = running

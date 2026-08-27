@@ -60,7 +60,8 @@ server.cmd --urls http://0.0.0.0:8080
 ```
 
 也可以使用 `kterm-server-launcher.exe` 在系统托盘管理 Server。Launcher 默认自动启动同目录下的
-`kterm-server.exe`，右键托盘图标可选择 `Start`、`Stop`、`Settings...`、`Logs` 和 `Exit`；双击图标也会打开日志窗口。
+`kterm-server.exe`，右键托盘图标可选择 `Start`、`Stop`、`Settings...`、`Credential Management...`、
+`Logs` 和 `Exit`；双击图标也会打开日志窗口。
 传给 Launcher 的命令行参数会继续传给 Server，例如：
 
 ```powershell
@@ -92,6 +93,12 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
 命令行参数最后生效，可用于临时覆盖。Server 运行期间保存设置时，Launcher 会询问是否立即重启。
 `workingDirectory` 为 `null` 或在 Settings 中留空时，Launcher 默认使用当前用户的 `%USERPROFILE%`；
 仅当用户目录不可用时才回退到 Launcher 的当前目录。
+
+`Credential Management...` 管理 Server 最终生效的 `--auth-file`（默认
+`%USERPROFILE%\.kterm\server_auth.json`）。窗口只显示 Argon2id 哈希的短指纹，可以手工新增密码、生成并复制
+32 字符随机密码，或删除选中的密码。随机密码明文只在生成后的窗口中显示一次。凭据修改后，运行中的 Server
+需要重启才能加载；Launcher 会询问是否立即重启。删除最后一个密码时会明确警告：`auto` 模式将回退为无密码，
+`required` 模式将无法启动。
 
 Launcher Settings 支持选择 PEM 格式的 Public certificate 和 Private key；两者必须同时配置、能够互相匹配，
 且私钥不能加密。Launcher 会把路径转换为 Kestrel 的默认 HTTPS 证书参数，不在配置文件中保存证书内容或密码。

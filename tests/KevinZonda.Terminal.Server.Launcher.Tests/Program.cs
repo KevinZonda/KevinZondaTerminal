@@ -1,5 +1,6 @@
 using System.Security.Cryptography.X509Certificates;
 using KevinZonda.Terminal.Server.Launcher;
+using KevinZonda.Terminal.Server.UserAuth;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -8,6 +9,9 @@ var tests = new (string Name, Action Run)[]
     ("Launcher emits Kestrel PEM arguments", TestLauncherArguments),
     ("Launcher rejects incomplete or mismatched PEM files", TestInvalidCertificateConfiguration),
     ("Launcher validates custom usernames", TestCustomUsername),
+    ("Credential Manager adds and deletes passwords", TestCredentialManager),
+    ("Credential Manager generates strong random passwords", TestGeneratedPassword),
+    ("Launcher resolves the effective authentication file", TestAuthFileResolver),
     ("Generator rejects unsafe domains", TestUnsafeDomain)
 };
 
@@ -197,6 +201,68 @@ static void TestCustomUsername()
     {
         Server = new LauncherServerConfiguration { CustomUsername = new string('a', 129) }
     }.Normalize());
+}
+
+static void TestCredentialManager()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var path = Path.Combine(directory, "server_auth.json");
+        var manager = new CredentialManager(path);
+        Equal(0, manager.LoadAsync().GetAwaiter().GetResult().AllowedHash.Length);
+
+        var added = manager.AddPasswordAsync("correct horse battery staple")
+            .GetAwaiter().GetResult();
+        Equal(1, added.AllowedHash.Length);
+        True(new Argon2PasswordService().Verify(
+            "correct horse battery staple",
+            added.AllowedHash[0]));
+        var entries = CredentialManager.GetEntries(added);
+        Equal(1, entries.Count);
+        Equal(16, entries[0].Fingerprint.Length);
+        Throws<CredentialManagementException>(() => manager
+            .AddPasswordAsync("correct horse battery staple")
+            .GetAwaiter().GetResult());
+
+        var deleted = manager.DeleteAsync(added.AllowedHash[0]).GetAwaiter().GetResult();
+        Equal(0, deleted.AllowedHash.Length);
+        Equal(0, manager.LoadAsync().GetAwaiter().GetResult().AllowedHash.Length);
+    });
+}
+
+static void TestGeneratedPassword()
+{
+    var first = CredentialManager.GenerateRandomPassword();
+    var second = CredentialManager.GenerateRandomPassword();
+    Equal(32, first.Length);
+    True(first.Any(char.IsUpper));
+    True(first.Any(char.IsLower));
+    True(first.Any(char.IsDigit));
+    True(first.Any(character => !char.IsLetterOrDigit(character)));
+    False(string.Equals(first, second, StringComparison.Ordinal));
+    Throws<ArgumentOutOfRangeException>(() => CredentialManager.GenerateRandomPassword(15));
+}
+
+static void TestAuthFileResolver()
+{
+    WithTemporaryDirectory(directory =>
+    {
+        var first = Path.Combine(directory, "first.json");
+        var second = Path.Combine(directory, "second.json");
+        Equal(
+            Path.GetFullPath(second),
+            ServerAuthFileArgumentResolver.Resolve(
+                ["--auth-file", first, $"--auth-file={second}"]));
+        Equal(
+            Path.Combine(directory, "relative.json"),
+            ServerAuthFileArgumentResolver.Resolve(
+                ["--auth-file", "relative.json"],
+                directory));
+        Throws<CredentialManagementException>(() =>
+            ServerAuthFileArgumentResolver.Resolve(["--auth-file"]));
+        Throws<CredentialManagementException>(() =>
+            ServerAuthFileArgumentResolver.Resolve(["--auth-file="]));
+    });
 }
 
 static void TestUnsafeDomain()

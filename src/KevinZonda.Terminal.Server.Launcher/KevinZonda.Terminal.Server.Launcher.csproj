@@ -19,6 +19,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\KevinZonda.Terminal.Server.UserAuth\KevinZonda.Terminal.Server.UserAuth.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>KevinZonda.Terminal.Server.Launcher.Tests</_Parameter1>
     </AssemblyAttribute>
