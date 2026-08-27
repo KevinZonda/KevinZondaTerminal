@@ -76,6 +76,7 @@ Shell 启动目录、断线 Runtime 保留时间和其他 Server 参数：
   "server": {
     "urls": "http://0.0.0.0:7132",
     "authMode": "auto",
+    "customUsername": "kterm",
     "workingDirectory": null,
     "runtimeRetentionMinutes": 30,
     "certificate": {
@@ -135,7 +136,9 @@ kterm-server auth init
 后续可用 `kterm-server auth add` 增加轮换密码，用 `kterm-server auth verify` 验证密码；三者都支持
 `--file <path>`。
 
-配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示原生 Basic Auth 登录框；验证成功后
+配置存在且 `allowedHash` 非空时，浏览器会在 `/auth/login` 显示原生 Basic Auth 登录框；用户名默认为
+`kterm`，可通过 `--custom-username <name>` 覆盖。用户名大小写敏感，不能包含冒号或控制字符，最长 128 字符。
+验证成功后
 Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该 Cookie 鉴权。`/healthz` 保持公开。
 配置不存在或 `allowedHash` 为空时，`auto` 模式会输出 `No Pass Hash, fallback to No Pass.` 并按无密码模式运行。
 

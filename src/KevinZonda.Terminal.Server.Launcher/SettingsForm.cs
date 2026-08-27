@@ -9,6 +9,7 @@ internal sealed class SettingsForm : Form
         Dock = DockStyle.Fill,
         DropDownStyle = ComboBoxStyle.DropDownList
     };
+    private readonly TextBox _customUsername = new() { Dock = DockStyle.Fill, MaxLength = 128 };
     private readonly TextBox _workingDirectory = new() { Dock = DockStyle.Fill };
     private readonly TextBox _publicCertificate = new() { Dock = DockStyle.Fill };
     private readonly TextBox _privateKey = new() { Dock = DockStyle.Fill };
@@ -49,6 +50,7 @@ internal sealed class SettingsForm : Form
         {
             _authMode.SelectedItem = "auto";
         }
+        _customUsername.Text = configuration.Server.CustomUsername;
         _workingDirectory.Text = configuration.Server.WorkingDirectory ?? string.Empty;
         _workingDirectory.PlaceholderText =
             $"Default: {LauncherConfiguration.DefaultWorkingDirectory}";
@@ -143,11 +145,11 @@ internal sealed class SettingsForm : Form
             ColumnCount = 2,
             Dock = DockStyle.Fill,
             Padding = new Padding(16),
-            RowCount = 13
+            RowCount = 14
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 10; row++)
+        for (var row = 0; row < 11; row++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
@@ -159,25 +161,26 @@ internal sealed class SettingsForm : Form
         layout.SetColumnSpan(_autoStart, 2);
         AddSetting(layout, "Server URLs", _urls, 1);
         AddSetting(layout, "Authentication", _authMode, 2);
-        AddSetting(layout, "Working directory", workingDirectoryPanel, 3);
-        AddSetting(layout, "Runtime retention (minutes)", _runtimeRetention, 4);
-        AddSetting(layout, "Public certificate", publicCertificatePanel, 5);
-        AddSetting(layout, "Private key", privateKeyPanel, 6);
-        AddSetting(layout, "Certificate tools", certificateTools, 7);
+        AddSetting(layout, "Login username", _customUsername, 3);
+        AddSetting(layout, "Working directory", workingDirectoryPanel, 4);
+        AddSetting(layout, "Runtime retention (minutes)", _runtimeRetention, 5);
+        AddSetting(layout, "Public certificate", publicCertificatePanel, 6);
+        AddSetting(layout, "Private key", privateKeyPanel, 7);
+        AddSetting(layout, "Certificate tools", certificateTools, 8);
         layout.Controls.Add(new Label
         {
             AutoSize = true,
             Margin = new Padding(3, 8, 3, 3),
             Text = "Additional arguments"
-        }, 0, 8);
-        layout.SetColumnSpan(layout.GetControlFromPosition(0, 8)!, 2);
-        layout.Controls.Add(help, 0, 9);
+        }, 0, 9);
+        layout.SetColumnSpan(layout.GetControlFromPosition(0, 9)!, 2);
+        layout.Controls.Add(help, 0, 10);
         layout.SetColumnSpan(help, 2);
-        layout.Controls.Add(_additionalArguments, 0, 10);
+        layout.Controls.Add(_additionalArguments, 0, 11);
         layout.SetColumnSpan(_additionalArguments, 2);
-        layout.Controls.Add(pathLabel, 0, 11);
+        layout.Controls.Add(pathLabel, 0, 12);
         layout.SetColumnSpan(pathLabel, 2);
-        layout.Controls.Add(buttons, 0, 12);
+        layout.Controls.Add(buttons, 0, 13);
         layout.SetColumnSpan(buttons, 2);
         Controls.Add(layout);
 
@@ -335,6 +338,7 @@ internal sealed class SettingsForm : Form
                 {
                     Urls = _urls.Text,
                     AuthMode = _authMode.SelectedItem as string ?? string.Empty,
+                    CustomUsername = _customUsername.Text,
                     WorkingDirectory = string.IsNullOrWhiteSpace(_workingDirectory.Text)
                         ? null
                         : _workingDirectory.Text,

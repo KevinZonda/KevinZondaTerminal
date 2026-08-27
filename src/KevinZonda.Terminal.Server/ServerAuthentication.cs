@@ -15,6 +15,7 @@ internal enum ServerAuthenticationMode
 
 internal sealed record ServerAuthenticationState(
     ServerAuthenticationMode Mode,
+    string UserName,
     string ConfigurationPath,
     ServerAuthConfiguration? Configuration,
     string? ConfigurationFingerprint,
@@ -27,7 +28,7 @@ internal static class ServerAuthentication
 {
     internal const string CookieScheme = "KTerm.Cookie";
     internal const string BasicScheme = "KTerm.Basic";
-    internal const string FixedUserName = "kterm";
+    internal const string DefaultUserName = "kterm";
     internal const string ConfigurationFingerprintClaim = "kterm:auth-config";
 
     internal static async Task<ServerAuthenticationState> LoadAsync(
@@ -35,11 +36,18 @@ internal static class ServerAuthentication
         CancellationToken cancellationToken = default)
     {
         var mode = ParseMode(configuration["auth-mode"]);
+        var userName = ParseUserName(configuration["custom-username"]);
         var configuredPath = configuration["auth-file"];
         var store = new ServerAuthStore(configuredPath);
         if (mode == ServerAuthenticationMode.Disabled)
         {
-            return new ServerAuthenticationState(mode, store.ConfigurationPath, null, null, false);
+            return new ServerAuthenticationState(
+                mode,
+                userName,
+                store.ConfigurationPath,
+                null,
+                null,
+                false);
         }
 
         if (!File.Exists(store.ConfigurationPath))
@@ -49,7 +57,13 @@ internal static class ServerAuthentication
                 throw new AuthConfigurationException(
                     $"The server authentication configuration does not exist: {store.ConfigurationPath}");
             }
-            return new ServerAuthenticationState(mode, store.ConfigurationPath, null, null, true);
+            return new ServerAuthenticationState(
+                mode,
+                userName,
+                store.ConfigurationPath,
+                null,
+                null,
+                true);
         }
 
         var authConfiguration = await store.LoadAllowingEmptyAsync(cancellationToken).ConfigureAwait(false);
@@ -59,14 +73,21 @@ internal static class ServerAuthentication
             {
                 throw new AuthConfigurationException("At least one allowed hash is required in required auth mode.");
             }
-            return new ServerAuthenticationState(mode, store.ConfigurationPath, null, null, true);
+            return new ServerAuthenticationState(
+                mode,
+                userName,
+                store.ConfigurationPath,
+                null,
+                null,
+                true);
         }
 
         return new ServerAuthenticationState(
             mode,
+            userName,
             store.ConfigurationPath,
             authConfiguration,
-            ComputeConfigurationFingerprint(authConfiguration.AllowedHash),
+            ComputeConfigurationFingerprint(userName, authConfiguration.AllowedHash),
             false);
     }
 
@@ -156,10 +177,31 @@ internal static class ServerAuthentication
             $"Unsupported auth mode '{value}'. Expected auto, required, or disabled.")
     };
 
-    private static string ComputeConfigurationFingerprint(IEnumerable<string> hashes)
+    private static string ParseUserName(string? value)
     {
-        var serializedHashes = string.Join('\0', hashes);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(serializedHashes)));
+        var userName = value?.Trim();
+        if (string.IsNullOrEmpty(userName))
+        {
+            return DefaultUserName;
+        }
+        if (userName.Length > 128)
+        {
+            throw new AuthConfigurationException("The custom username must be 128 characters or fewer.");
+        }
+        if (userName.Contains(':') || userName.Any(char.IsControl))
+        {
+            throw new AuthConfigurationException(
+                "The custom username cannot contain a colon or control characters.");
+        }
+        return userName;
+    }
+
+    private static string ComputeConfigurationFingerprint(
+        string userName,
+        IEnumerable<string> hashes)
+    {
+        var serializedConfiguration = userName + '\0' + string.Join('\0', hashes);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(serializedConfiguration)));
     }
 }
 

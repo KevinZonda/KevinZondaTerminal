@@ -62,6 +62,21 @@ internal sealed record LauncherConfiguration
             throw new LauncherConfigurationException(
                 "Authentication mode must be auto, required, or disabled.");
         }
+        var customUsername = Server.CustomUsername?.Trim();
+        if (string.IsNullOrEmpty(customUsername))
+        {
+            customUsername = "kterm";
+        }
+        if (customUsername.Length > 128)
+        {
+            throw new LauncherConfigurationException(
+                "The custom username must be 128 characters or fewer.");
+        }
+        if (customUsername.Contains(':') || customUsername.Any(char.IsControl))
+        {
+            throw new LauncherConfigurationException(
+                "The custom username cannot contain a colon or control characters.");
+        }
         if (!double.IsFinite(Server.RuntimeRetentionMinutes) ||
             Server.RuntimeRetentionMinutes is < 0.1 or > 1440)
         {
@@ -125,6 +140,7 @@ internal sealed record LauncherConfiguration
             {
                 Urls = urls,
                 AuthMode = authMode,
+                CustomUsername = customUsername,
                 WorkingDirectory = workingDirectory,
                 Certificate = certificate,
                 AdditionalArguments = additionalArguments
@@ -167,6 +183,8 @@ internal sealed record LauncherConfiguration
         arguments.Add(normalized.Server.Urls);
         arguments.Add("--auth-mode");
         arguments.Add(normalized.Server.AuthMode);
+        arguments.Add("--custom-username");
+        arguments.Add(normalized.Server.CustomUsername);
         arguments.Add("--working-directory");
         arguments.Add(normalized.Server.WorkingDirectory ?? DefaultWorkingDirectory);
         arguments.Add("--runtime-retention-minutes");
@@ -250,6 +268,7 @@ internal sealed record LauncherServerConfiguration
 {
     public string Urls { get; init; } = "http://0.0.0.0:7132";
     public string AuthMode { get; init; } = "auto";
+    public string CustomUsername { get; init; } = "kterm";
     public string? WorkingDirectory { get; init; }
     public double RuntimeRetentionMinutes { get; init; } = 30;
     public LauncherCertificateConfiguration Certificate { get; init; } = new();

@@ -7,6 +7,7 @@ var tests = new (string Name, Action Run)[]
     ("Generation refuses overwrite", TestOverwriteProtection),
     ("Launcher emits Kestrel PEM arguments", TestLauncherArguments),
     ("Launcher rejects incomplete or mismatched PEM files", TestInvalidCertificateConfiguration),
+    ("Launcher validates custom usernames", TestCustomUsername),
     ("Generator rejects unsafe domains", TestUnsafeDomain)
 };
 
@@ -103,6 +104,7 @@ static void TestLauncherArguments()
             {
                 Urls = "http://127.0.0.1:7132;https://127.0.0.1:7133",
                 AuthMode = "required",
+                CustomUsername = "operator",
                 Certificate = new LauncherCertificateConfiguration
                 {
                     PublicCertificatePath = output.PublicCertificatePath,
@@ -121,6 +123,7 @@ static void TestLauncherArguments()
         Equal(
             "http://127.0.0.1:7132;https://127.0.0.1:7133",
             ValueAfter(arguments, "--urls"));
+        Equal("operator", ValueAfter(arguments, "--custom-username"));
 
         var path = Path.Combine(directory, "server_launcher.json");
         var store = new LauncherConfigurationStore(path);
@@ -128,6 +131,7 @@ static void TestLauncherArguments()
         var loaded = store.Load();
         Equal(output.PublicCertificatePath, loaded.Server.Certificate.PublicCertificatePath);
         Equal(output.PrivateKeyPath, loaded.Server.Certificate.PrivateKeyPath);
+        Equal("operator", loaded.Server.CustomUsername);
     });
 }
 
@@ -165,6 +169,34 @@ static void TestInvalidCertificateConfiguration()
             }
         }.Normalize());
     });
+}
+
+static void TestCustomUsername()
+{
+    Equal(
+        "kterm",
+        new LauncherConfiguration
+        {
+            Server = new LauncherServerConfiguration { CustomUsername = " " }
+        }.Normalize().Server.CustomUsername);
+    Equal(
+        "operator",
+        new LauncherConfiguration
+        {
+            Server = new LauncherServerConfiguration { CustomUsername = " operator " }
+        }.Normalize().Server.CustomUsername);
+    Throws<LauncherConfigurationException>(() => new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration { CustomUsername = "bad:name" }
+    }.Normalize());
+    Throws<LauncherConfigurationException>(() => new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration { CustomUsername = "bad\nname" }
+    }.Normalize());
+    Throws<LauncherConfigurationException>(() => new LauncherConfiguration
+    {
+        Server = new LauncherServerConfiguration { CustomUsername = new string('a', 129) }
+    }.Normalize());
 }
 
 static void TestUnsafeDomain()

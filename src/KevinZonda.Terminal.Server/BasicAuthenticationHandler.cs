@@ -77,7 +77,7 @@ internal sealed class BasicAuthenticationHandler : AuthenticationHandler<Authent
             if (separator <= 0 ||
                 !string.Equals(
                     credentials[..separator],
-                    ServerAuthentication.FixedUserName,
+                    _state.UserName,
                     StringComparison.Ordinal))
             {
                 return AuthenticateResult.Fail("Invalid Basic authentication credentials.");
@@ -91,8 +91,8 @@ internal sealed class BasicAuthenticationHandler : AuthenticationHandler<Authent
 
             var identity = new ClaimsIdentity(
                 [
-                    new Claim(ClaimTypes.NameIdentifier, ServerAuthentication.FixedUserName),
-                    new Claim(ClaimTypes.Name, ServerAuthentication.FixedUserName),
+                    new Claim(ClaimTypes.NameIdentifier, _state.UserName),
+                    new Claim(ClaimTypes.Name, _state.UserName),
                     new Claim(
                         ServerAuthentication.ConfigurationFingerprintClaim,
                         _state.ConfigurationFingerprint!)

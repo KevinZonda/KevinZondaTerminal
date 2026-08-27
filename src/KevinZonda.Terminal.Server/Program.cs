@@ -306,8 +306,9 @@ if (serverAuthentication.FellBackToNoPassword)
 else if (serverAuthentication.Enabled)
 {
     app.Logger.LogInformation(
-        "Password authentication is enabled using {AuthenticationFile}",
-        serverAuthentication.ConfigurationPath);
+        "Password authentication is enabled using {AuthenticationFile} for user {UserName}",
+        serverAuthentication.ConfigurationPath,
+        serverAuthentication.UserName);
 }
 if (launcherPipe is not null)
 {
