@@ -51,6 +51,10 @@ internal static class TaskbarJumpList
             if (visible.Length > 0)
             {
                 var collectionObject = (object)new EnumerableObjectCollectionComObject();
+                // Keep every ShellLink RCW alive until the collection has been
+                // appended. Releasing one inside this loop invalidates later
+                // activations in ReadyToRun single-file builds.
+                var linkObjects = new List<object>(visible.Length);
                 try
                 {
                     var collection = (IObjectCollection)collectionObject;
@@ -60,10 +64,12 @@ internal static class TaskbarJumpList
                         try
                         {
                             ThrowIfFailed(collection.AddObject(linkObject));
+                            linkObjects.Add(linkObject);
                         }
-                        finally
+                        catch
                         {
                             ReleaseComObject(linkObject);
+                            throw;
                         }
                     }
 
@@ -77,6 +83,10 @@ internal static class TaskbarJumpList
                 }
                 finally
                 {
+                    for (var index = linkObjects.Count - 1; index >= 0; index--)
+                    {
+                        ReleaseComObject(linkObjects[index]);
+                    }
                     ReleaseComObject(collectionObject);
                 }
             }

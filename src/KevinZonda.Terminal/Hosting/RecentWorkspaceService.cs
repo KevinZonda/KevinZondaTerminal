@@ -69,11 +69,14 @@ internal static class RecentWorkspaceService
                 _ = TaskbarJumpList.Update(workspaces);
             }
         }
+        // Recent Workspaces is optional shell integration and must never keep
+        // the terminal UI from starting, including unexpected COM/RCW faults.
         catch (Exception exception) when (
             exception is IOException or
                 UnauthorizedAccessException or
                 InvalidOperationException or
                 InvalidCastException or
+                NullReferenceException or
                 ArgumentException or
                 COMException)
         {
