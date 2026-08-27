@@ -57,6 +57,7 @@ const summary = requireElement<HTMLElement>('summary');
 const runtimeList = requireElement<HTMLElement>('runtime-list');
 const updated = requireElement<HTMLElement>('last-updated');
 const refreshButton = requireElement<HTMLButtonElement>('refresh');
+const logoutButton = requireElement<HTMLButtonElement>('logout');
 const sessionsTab = requireElement<HTMLButtonElement>('sessions-tab');
 const localConfigurationTab = requireElement<HTMLButtonElement>('local-configuration-tab');
 const sessionsPanel = requireElement<HTMLElement>('sessions-panel');
@@ -73,6 +74,7 @@ let refreshTimer: number | undefined;
 let requestInFlight = false;
 
 refreshButton.addEventListener('click', () => void refresh());
+logoutButton.addEventListener('click', () => void logout());
 sessionsTab.addEventListener('click', () => activateTab('sessions'));
 localConfigurationTab.addEventListener('click', () => activateTab('local-configuration'));
 localConfigurationForm.addEventListener('submit', saveLocalConfiguration);
@@ -232,6 +234,7 @@ async function refresh(): Promise<void> {
 
 function showDisabled(message: string): void {
   content.hidden = true;
+  logoutButton.hidden = true;
   showNotice(message, 'warning');
   updated.textContent = 'Management disabled';
 }
@@ -245,6 +248,8 @@ function showNotice(message: string, kind: 'warning' | 'error'): void {
 function render(snapshot: DashboardSnapshot): void {
   notice.hidden = true;
   content.hidden = false;
+  logoutButton.hidden = false;
+  logoutButton.disabled = false;
   const runtimes = snapshot.runtimes ?? [];
   summary.replaceChildren(
     summaryCard('Runtimes', String(snapshot.runtimeCount ?? runtimes.length), `${snapshot.connectedRuntimeCount ?? 0} connected`),
@@ -262,6 +267,31 @@ function render(snapshot: DashboardSnapshot): void {
     return;
   }
   runtimes.forEach(runtime => runtimeList.append(renderRuntime(runtime)));
+}
+
+async function logout(): Promise<void> {
+  if (!csrfToken) {
+    showNotice('Unable to log out before the dashboard security token is available.', 'error');
+    return;
+  }
+
+  logoutButton.disabled = true;
+  try {
+    const response = await fetch('/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-KTerm-CSRF': csrfToken }
+    });
+    if (!response.ok) {
+      throw new Error(`Logout returned HTTP ${response.status}.`);
+    }
+
+    window.clearInterval(refreshTimer);
+    window.location.replace('/auth/logged-out');
+  } catch (error) {
+    logoutButton.disabled = false;
+    showNotice(error instanceof Error ? error.message : 'Unable to log out.', 'error');
+  }
 }
 
 function summaryCard(label: string, value: string, detail: string): HTMLElement {

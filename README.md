@@ -144,6 +144,8 @@ Session 或整个 Runtime。Dashboard 前端由独立的 `KevinZonda.Terminal.Se
 `kterm-server`，不会进入桌面 Terminal 的前端资源。管理操作只在密码认证启用时开放；无密码模式下 Dashboard
 只显示管理功能已禁用的提示。Dashboard 的 `Local Configuration` 页签不依赖管理权限，可通过当前 Origin 的
 `kterm.fontFamily`、`kterm.fontSize` 和 `kterm.theme` Local Storage 项调整本浏览器中的所有 Terminal 页面。
+密码认证启用时，Dashboard 的 `Logout` 会通过 CSRF 保护的请求注销认证 Cookie，并停留在公开的退出完成页；
+浏览器仍可能缓存 Basic Auth 凭据，因此不会在退出后自动跳回受保护页面。
 
 Terminal 网页包含 Web App Manifest、桌面/移动端安装图标、Apple Web App 元信息，以及 Terminal 和 Dashboard
 快捷入口。Service Worker 只缓存带版本 hash 的前端资源和图标，不缓存 HTML、认证、API 或 WebSocket 请求；

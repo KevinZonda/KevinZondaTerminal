@@ -90,7 +90,58 @@ if (serverAuthentication.Enabled)
         policy.AddAuthenticationSchemes(ServerAuthentication.BasicScheme);
         policy.RequireAuthenticatedUser();
     });
+
+    app.MapPost(
+        "/auth/logout",
+        async (HttpContext context, IAntiforgery antiforgery) =>
+        {
+            if (!await IsValidDashboardRequestAsync(context, antiforgery).ConfigureAwait(false))
+            {
+                return Results.BadRequest(new { error = "Invalid dashboard CSRF token." });
+            }
+
+            await context.SignOutAsync(ServerAuthentication.CookieScheme).ConfigureAwait(false);
+            app.Logger.LogInformation(
+                "Dashboard user logged out from {RemoteAddress}",
+                context.Connection.RemoteIpAddress);
+            return Results.NoContent();
+        }).RequireAuthorization();
 }
+
+app.MapGet("/auth/logged-out", (HttpContext context) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Content(
+        """
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <meta name="color-scheme" content="dark">
+            <title>Logged out - KTerm Server</title>
+            <style>
+              :root { color: #e8edf5; background: #080b11; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+              * { box-sizing: border-box; }
+              body { display: grid; min-width: 320px; min-height: 100vh; margin: 0; place-items: center; background: radial-gradient(circle at 50% 0, rgba(70,110,255,.16), transparent 34rem), #080b11; }
+              main { width: min(440px, calc(100% - 32px)); padding: 34px; border: 1px solid #1e2530; border-radius: 14px; background: rgba(15,19,28,.9); box-shadow: 0 18px 50px rgba(0,0,0,.24); }
+              p { margin: 10px 0 24px; color: #8e98a8; line-height: 1.55; }
+              h1 { margin: 0; font-size: 28px; }
+              a { display: inline-flex; min-height: 38px; align-items: center; padding: 0 14px; border: 1px solid #2e3a50; border-radius: 9px; color: #e8edf5; background: #27334a; text-decoration: none; }
+              a:hover { border-color: #627ebd; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>Logged out</h1>
+              <p>Your KTerm authentication cookie has been removed. Existing Basic credentials may still be cached by this browser.</p>
+              <a href="/auth/login?returnUrl=%2Fdashboard">Sign in again</a>
+            </main>
+          </body>
+        </html>
+        """,
+        "text/html; charset=utf-8");
+}).AllowAnonymous();
 
 var webSocketEndpoint = app.Map("/ws", async context =>
 {
