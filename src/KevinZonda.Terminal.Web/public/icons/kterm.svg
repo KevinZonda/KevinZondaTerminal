@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="KevinZonda Terminal">
+  <defs>
+    <linearGradient id="surface" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18212e" />
+      <stop offset="1" stop-color="#080b11" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(164 104) rotate(51) scale(390)">
+      <stop stop-color="#315f85" stop-opacity=".48" />
+      <stop offset="1" stop-color="#0c0f14" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#0c0f14" />
+  <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#surface)" />
+  <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#glow)" />
+  <rect x="48" y="48" width="416" height="416" rx="88" fill="none" stroke="#ffffff" stroke-opacity=".07" stroke-width="4" />
+  <path d="M145 164L251 256L145 348" fill="none" stroke="#8fbcbb" stroke-width="42" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M281 347H382" fill="none" stroke="#61afef" stroke-width="42" stroke-linecap="round" />
+</svg>

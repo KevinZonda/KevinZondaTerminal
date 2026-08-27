@@ -118,6 +118,8 @@ export function applyTerminalThemeToDocument(name: string): void {
   const background = theme.background ?? '#0c0f14';
   const foreground = theme.foreground ?? '#d8dee9';
   const accent = theme.blue ?? '#5e81ac';
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', background);
   root.setProperty('--terminal-background', background);
   for (const [property, value] of Object.entries(deriveChromePalette(background, foreground, accent))) {
     root.setProperty(property, value);

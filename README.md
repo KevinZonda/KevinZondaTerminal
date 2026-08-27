@@ -123,6 +123,11 @@ Session 或整个 Runtime。Dashboard 前端由独立的 `KevinZonda.Terminal.Se
 只显示管理功能已禁用的提示。Dashboard 的 `Local Configuration` 页签不依赖管理权限，可通过当前 Origin 的
 `kterm.fontFamily`、`kterm.fontSize` 和 `kterm.theme` Local Storage 项调整本浏览器中的所有 Terminal 页面。
 
+Terminal 网页包含 Web App Manifest、桌面/移动端安装图标、Apple Web App 元信息，以及 Terminal 和 Dashboard
+快捷入口。Service Worker 只缓存带版本 hash 的前端资源和图标，不缓存 HTML、认证、API 或 WebSocket 请求；
+Terminal 仍要求连接 Server，不提供离线 Shell。浏览器的完整安装能力取决于 Secure Context，`localhost` 可用于
+本机开发，普通局域网 HTTP 地址可能只支持添加到主屏幕而不能启用完整 PWA 能力。
+
 可用 `--auth-file <path>` 指定其他配置文件；`--auth-mode required` 要求配置存在且非空，
 `--auth-mode disabled` 则明确关闭密码验证：
 

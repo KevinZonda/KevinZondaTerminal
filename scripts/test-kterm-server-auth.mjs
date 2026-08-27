@@ -69,6 +69,40 @@ const html = await page.text();
 if (!html.includes('id="app"')) {
   throw new Error('Authenticated page did not return the KTerm frontend.');
 }
+if (!html.includes('rel="manifest"') || !html.includes('crossorigin="use-credentials"') ||
+    !html.includes('rel="apple-touch-icon"')) {
+  throw new Error('Authenticated page did not include its Web App metadata.');
+}
+
+const anonymousManifest = await fetch(new URL('/manifest.webmanifest', baseUrl), { redirect: 'manual' });
+equal(302, anonymousManifest.status, 'anonymous Web App manifest status');
+const manifestResponse = await fetch(new URL('/manifest.webmanifest', baseUrl), {
+  redirect: 'manual',
+  headers: { Cookie: cookie }
+});
+equal(200, manifestResponse.status, 'authenticated Web App manifest status');
+if (!manifestResponse.headers.get('content-type')?.startsWith('application/manifest+json')) {
+  throw new Error('Authenticated Web App manifest has an invalid content type.');
+}
+
+const anonymousServiceWorker = await fetch(new URL('/sw.js', baseUrl), { redirect: 'manual' });
+equal(302, anonymousServiceWorker.status, 'anonymous service worker status');
+const serviceWorker = await fetch(new URL('/sw.js', baseUrl), {
+  redirect: 'manual',
+  headers: { Cookie: cookie }
+});
+equal(200, serviceWorker.status, 'authenticated service worker status');
+
+const manifest = await manifestResponse.json();
+const iconPath = manifest.icons?.find(icon => icon.sizes === '512x512')?.src;
+if (!iconPath) {
+  throw new Error('Authenticated Web App manifest is missing its 512px icon.');
+}
+const authenticatedIcon = await fetch(new URL(iconPath, baseUrl), {
+  redirect: 'manual',
+  headers: { Cookie: cookie }
+});
+equal(200, authenticatedIcon.status, 'authenticated Web App icon status');
 
 const assetPath = html.match(/(?:src|href)="([^"]*assets\/[^"]+)"/)?.[1];
 if (!assetPath) {

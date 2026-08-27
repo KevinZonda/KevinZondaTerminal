@@ -4,8 +4,42 @@ const socketUrl = new URL('/ws', baseUrl);
 socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:';
 
 const response = await fetch(baseUrl);
-if (!response.ok || !(await response.text()).includes('id="app"')) {
+const html = await response.text();
+if (!response.ok || !html.includes('id="app"')) {
   throw new Error(`KTerm frontend request failed with HTTP ${response.status}.`);
+}
+
+if (!html.includes('rel="manifest"') || !html.includes('crossorigin="use-credentials"') ||
+    !html.includes('rel="apple-touch-icon"')) {
+  throw new Error('KTerm frontend is missing its Web App metadata.');
+}
+
+const manifestResponse = await fetch(new URL('/manifest.webmanifest', baseUrl));
+if (!manifestResponse.ok ||
+    !manifestResponse.headers.get('content-type')?.startsWith('application/manifest+json')) {
+  throw new Error(`KTerm Web App manifest request failed with HTTP ${manifestResponse.status}.`);
+}
+const manifest = await manifestResponse.json();
+if (manifest.name !== 'KevinZonda Terminal' || manifest.display !== 'standalone' ||
+    manifest.start_url !== '/' || !manifest.icons?.some(icon => icon.sizes === '512x512') ||
+    !manifest.shortcuts?.some(shortcut => shortcut.url === '/dashboard/')) {
+  throw new Error('KTerm Web App manifest is missing required installation metadata.');
+}
+
+for (const iconPath of ['/icons/kterm-192.png', '/icons/kterm-512.png']) {
+  const iconResponse = await fetch(new URL(iconPath, baseUrl));
+  if (!iconResponse.ok || iconResponse.headers.get('content-type') !== 'image/png') {
+    throw new Error(`KTerm Web App icon request failed: ${iconPath}.`);
+  }
+}
+
+const serviceWorkerResponse = await fetch(new URL('/sw.js', baseUrl));
+const serviceWorker = await serviceWorkerResponse.text();
+if (!serviceWorkerResponse.ok ||
+    !serviceWorker.includes("pathname.startsWith('/assets/')") ||
+    serviceWorker.includes("pathname.startsWith('/api/')") ||
+    serviceWorker.includes("pathname.startsWith('/auth/')")) {
+  throw new Error('KTerm service worker has an invalid static-cache boundary.');
 }
 
 const runtimeId = `smoke-${Date.now()}-${Math.random().toString(16).slice(2)}`;

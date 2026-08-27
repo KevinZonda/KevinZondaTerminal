@@ -43,6 +43,7 @@ public static class EmbeddedWebAssets
         ".css" => "text/css; charset=utf-8",
         ".js" => "text/javascript; charset=utf-8",
         ".json" or ".map" => "application/json; charset=utf-8",
+        ".webmanifest" => "application/manifest+json; charset=utf-8",
         ".svg" => "image/svg+xml",
         ".png" => "image/png",
         ".jpg" or ".jpeg" => "image/jpeg",

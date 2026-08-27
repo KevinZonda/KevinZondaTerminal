@@ -1,0 +1,52 @@
+{
+  "id": "/",
+  "name": "KevinZonda Terminal",
+  "short_name": "KTerm",
+  "description": "A fast browser terminal for KTerm Server.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0c0f14",
+  "theme_color": "#0c0f14",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/kterm-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/kterm-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Terminal",
+      "short_name": "Terminal",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icons/kterm-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Server Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard/",
+      "icons": [
+        {
+          "src": "/icons/kterm-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}
