@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using KevinZonda.Terminal.Hosting;
 using KevinZonda.Terminal.Interop;
+using KevinZonda.Terminal.RecentWorkspaces;
 using KevinZonda.Terminal.Terminal;
 
 namespace KevinZonda.Terminal;
@@ -52,7 +53,13 @@ internal static class Program
             }
 
             ConfigureConHostIntegrityPrompt();
-            RecentWorkspaceService.RecordAndUpdate(startingDirectory);
+            var recentWorkspaceStartInfo = SelfProcessLauncher.CreateStartInfo(
+                startingDirectory,
+                []);
+            RecentWorkspaceService.RecordAndUpdate(
+                startingDirectory,
+                recentWorkspaceStartInfo.FileName,
+                recentWorkspaceStartInfo.ArgumentList);
             Application.Run(new MainForm(startingDirectory));
             return 0;
         }

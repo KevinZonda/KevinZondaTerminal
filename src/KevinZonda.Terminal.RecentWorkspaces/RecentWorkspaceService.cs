@@ -1,14 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace KevinZonda.Terminal.Hosting;
+namespace KevinZonda.Terminal.RecentWorkspaces;
 
-internal static class RecentWorkspaceService
+public static class RecentWorkspaceService
 {
     private const string MutexName = @"Local\KevinZonda.Terminal.RecentWorkspaces";
     private const string DisableJumpListEnvironmentVariable = "KTERM_DISABLE_JUMP_LIST";
 
-    internal static void RecordAndUpdate(string startingDirectory)
+    public static void RecordAndUpdate(
+        string startingDirectory,
+        string executablePath,
+        IEnumerable<string> argumentPrefix)
     {
         var mutexEntered = false;
         Mutex? mutex = null;
@@ -47,27 +50,17 @@ internal static class RecentWorkspaceService
                 return;
             }
 
-            var removed = TaskbarJumpList.Update(workspaces);
+            var launchCommand = WorkspaceLaunchCommand.Create(
+                executablePath,
+                argumentPrefix);
+            var removed = TaskbarJumpList.Update(workspaces, launchCommand);
             if (removed.Count == 0)
             {
                 return;
             }
 
-            var currentWasRemoved = removed.Contains(startingDirectory);
             workspaces.RemoveAll(removed.Contains);
-            if (currentWasRemoved)
-            {
-                workspaces.Insert(0, startingDirectory);
-            }
             store.Save(workspaces);
-
-            // BeginList reports removals from the preceding Jump List. Once
-            // that removal has been honored and committed, an explicitly
-            // reopened workspace is eligible to appear again.
-            if (currentWasRemoved)
-            {
-                _ = TaskbarJumpList.Update(workspaces);
-            }
         }
         // Recent Workspaces is optional shell integration and must never keep
         // the terminal UI from starting, including unexpected COM/RCW faults.

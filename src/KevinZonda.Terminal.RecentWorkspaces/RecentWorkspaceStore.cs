@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace KevinZonda.Terminal.Hosting;
+namespace KevinZonda.Terminal.RecentWorkspaces;
 
 internal sealed class RecentWorkspaceStore
 {

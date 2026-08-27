@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace KevinZonda.Terminal.Hosting;
+namespace KevinZonda.Terminal.RecentWorkspaces;
 
 internal static class TaskbarJumpList
 {
@@ -18,7 +18,9 @@ internal static class TaskbarJumpList
         new Guid("F29F85E0-4FF9-1068-AB91-08002B27B3D9"),
         2);
 
-    internal static IReadOnlySet<string> Update(IReadOnlyList<string> workspaces)
+    internal static IReadOnlySet<string> Update(
+        IReadOnlyList<string> workspaces,
+        WorkspaceLaunchCommand launchCommand)
     {
         var destinationListObject = (object)new DestinationListComObject();
         var destinationList = (ICustomDestinationList)destinationListObject;
@@ -40,7 +42,8 @@ internal static class TaskbarJumpList
             }
             var removed = FindRemovedWorkspaces(
                 removedItems,
-                workspaces);
+                workspaces,
+                launchCommand);
             var visible = workspaces
                 .Where(workspace => !removed.Contains(workspace))
                 .Take(maximumSlots == 0
@@ -52,15 +55,15 @@ internal static class TaskbarJumpList
             {
                 var collectionObject = (object)new EnumerableObjectCollectionComObject();
                 // Keep every ShellLink RCW alive until the collection has been
-                // appended. Releasing one inside this loop invalidates later
-                // activations in ReadyToRun single-file builds.
+                // appended so the native collection never observes a wrapper
+                // that has already been detached from its COM object.
                 var linkObjects = new List<object>(visible.Length);
                 try
                 {
                     var collection = (IObjectCollection)collectionObject;
                     foreach (var workspace in visible)
                     {
-                        var linkObject = CreateWorkspaceLink(workspace);
+                        var linkObject = CreateWorkspaceLink(workspace, launchCommand);
                         try
                         {
                             ThrowIfFailed(collection.AddObject(linkObject));
@@ -111,10 +114,11 @@ internal static class TaskbarJumpList
 
     private static HashSet<string> FindRemovedWorkspaces(
         IObjectArray removedItems,
-        IReadOnlyList<string> workspaces)
+        IReadOnlyList<string> workspaces,
+        WorkspaceLaunchCommand launchCommand)
     {
         var identities = workspaces.ToDictionary(
-            CreateIdentity,
+            workspace => CreateIdentity(workspace, launchCommand),
             workspace => workspace,
             WorkspaceLinkIdentityComparer.Instance);
         var removed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -159,11 +163,14 @@ internal static class TaskbarJumpList
         return removed;
     }
 
-    private static object CreateWorkspaceLink(string workspace)
+    private static object CreateWorkspaceLink(
+        string workspace,
+        WorkspaceLaunchCommand launchCommand)
     {
-        var startInfo = SelfProcessLauncher.CreateStartInfo(workspace, [workspace]);
-        var targetPath = Path.GetFullPath(startInfo.FileName);
-        var arguments = string.Join(' ', startInfo.ArgumentList.Select(QuoteArgument));
+        var targetPath = launchCommand.ExecutablePath;
+        var arguments = string.Join(
+            ' ',
+            launchCommand.ArgumentPrefix.Append(workspace).Select(QuoteArgument));
         var linkObject = (object)new ShellLinkComObject();
         try
         {
@@ -196,12 +203,15 @@ internal static class TaskbarJumpList
         }
     }
 
-    private static WorkspaceLinkIdentity CreateIdentity(string workspace)
+    private static WorkspaceLinkIdentity CreateIdentity(
+        string workspace,
+        WorkspaceLaunchCommand launchCommand)
     {
-        var startInfo = SelfProcessLauncher.CreateStartInfo(workspace, [workspace]);
         return new WorkspaceLinkIdentity(
-            NormalizePath(startInfo.FileName),
-            string.Join(' ', startInfo.ArgumentList.Select(QuoteArgument)));
+            launchCommand.ExecutablePath,
+            string.Join(
+                ' ',
+                launchCommand.ArgumentPrefix.Append(workspace).Select(QuoteArgument)));
     }
 
     private static string NormalizePath(string path)
