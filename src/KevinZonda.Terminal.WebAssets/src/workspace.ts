@@ -1293,7 +1293,7 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private async createTabInWorkspace(workspace: WorkspaceState, paneId?: string): Promise<void> {
-    const isActiveWorkspace = worksp...ce.id === this.activeWorkspaceId;
+    const isActiveWorkspace = workspace.id === this.activeWorkspaceId;
     if (isActiveWorkspace) {
       this.setStatus('Starting shell…');
     }
@@ -2304,7 +2304,7 @@ export class Workspace implements TerminalCallbacks {
     name.className = 'agent-usage-name';
     name.textContent = provider.provider === 'codex' ? 'Codex' : 'Kimi';
     item.append(name);
-...
+
     if (provider.state === 'loading') {
       item.append(this.agentUsageText('Loading usage…', 'agent-usage-message'));
     } else if (provider.windows.length === 0) {
@@ -2410,7 +2410,7 @@ export class Workspace implements TerminalCallbacks {
     }
 
     if (provider.windows.length === 0) {
-      const empty = document.createElement('div');...
+      const empty = document.createElement('div');
       empty.className = 'agent-usage-tooltip-empty';
       empty.textContent = provider.state === 'loading' ? 'Loading usage…' : 'Usage details unavailable';
       content.append(empty);
