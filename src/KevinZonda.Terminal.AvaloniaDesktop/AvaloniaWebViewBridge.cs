@@ -132,6 +132,15 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     LaunchNewInstance();
                     break;
 
+                case "window.quit":
+                    if (!OperatingSystem.IsMacOS())
+                    {
+                        throw new InvalidOperationException(
+                            "Application quit is only available on macOS.");
+                    }
+                    Dispatcher.UIThread.Post(() => _owner.Close());
+                    break;
+
                 case "window.openExternal":
                     OpenExternal(GetString(message.Payload, "uri"));
                     break;
