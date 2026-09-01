@@ -65,21 +65,31 @@ internal sealed record BellSettings
     internal const string NoneSound = "None";
     internal const string Tone880To660HzSound = "880-660Hz";
     internal const string NoVisualFeedback = "None";
-    internal const string BriefVisualFeedback = "Briefly";
-    internal const string UntilViewedVisualFeedback = "UntilViewed";
+    internal const string BriefTabVisualFeedback = "Briefly";
+    internal const string UntilViewedTabVisualFeedback = "UntilViewed";
+    internal const string UntilWorkspaceViewedVisualFeedback = "UntilWorkspaceViewed";
+    internal const string UntilAllBellsViewedVisualFeedback = "UntilAllBellsViewed";
 
     public string Sound { get; init; } = Tone880To660HzSound;
 
-    public string VisualFeedback { get; init; } = BriefVisualFeedback;
+    public string TabVisualFeedback { get; init; } = UntilViewedTabVisualFeedback;
+
+    public string WorkspaceVisualFeedback { get; init; } = UntilAllBellsViewedVisualFeedback;
 
     internal static BellSettings Normalize(BellSettings? settings) => new()
     {
         Sound = settings?.Sound == NoneSound ? NoneSound : Tone880To660HzSound,
-        VisualFeedback = settings?.VisualFeedback switch
+        TabVisualFeedback = settings?.TabVisualFeedback switch
         {
             NoVisualFeedback => NoVisualFeedback,
-            UntilViewedVisualFeedback => UntilViewedVisualFeedback,
-            _ => BriefVisualFeedback
+            BriefTabVisualFeedback => BriefTabVisualFeedback,
+            _ => UntilViewedTabVisualFeedback
+        },
+        WorkspaceVisualFeedback = settings?.WorkspaceVisualFeedback switch
+        {
+            NoVisualFeedback => NoVisualFeedback,
+            UntilWorkspaceViewedVisualFeedback => UntilWorkspaceViewedVisualFeedback,
+            _ => UntilAllBellsViewedVisualFeedback
         }
     };
 }

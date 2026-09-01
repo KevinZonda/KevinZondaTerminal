@@ -147,8 +147,11 @@
           <TextBlock Classes="field-label" Text="Bell sound" />
           <ComboBox x:Name="BellSoundBox" Margin="0,0,0,12" />
 
-          <TextBlock Classes="field-label" Text="Visual bell" />
-          <ComboBox x:Name="BellVisualFeedbackBox" Margin="0,0,0,12" />
+          <TextBlock Classes="field-label" Text="Tab visual bell" />
+          <ComboBox x:Name="TabVisualFeedbackBox" Margin="0,0,0,12" />
+
+          <TextBlock Classes="field-label" Text="Workspace visual bell" />
+          <ComboBox x:Name="WorkspaceVisualFeedbackBox" Margin="0,0,0,12" />
 
           <TextBlock Classes="field-label"
                      Text="When the last tab in a workspace closes" />

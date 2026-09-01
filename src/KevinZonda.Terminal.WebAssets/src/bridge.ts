@@ -47,7 +47,8 @@ export interface CursorSettings {
 
 export interface BellSettings {
   sound: 'None' | '880-660Hz';
-  visualFeedback: 'None' | 'Briefly' | 'UntilViewed';
+  tabVisualFeedback: 'None' | 'Briefly' | 'UntilViewed';
+  workspaceVisualFeedback: 'None' | 'UntilWorkspaceViewed' | 'UntilAllBellsViewed';
 }
 
 export interface IndicatorSettings {
@@ -139,7 +140,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   bell: {
     sound: '880-660Hz',
-    visualFeedback: 'Briefly'
+    tabVisualFeedback: 'UntilViewed',
+    workspaceVisualFeedback: 'UntilAllBellsViewed'
   },
   indicators: {
     showWorkspaceIndicator: true,
@@ -468,9 +470,17 @@ export class NativeBridge {
       },
       bell: {
         sound: bell.sound === 'None' ? 'None' : '880-660Hz',
-        visualFeedback: bell.visualFeedback === 'None' || bell.visualFeedback === 'UntilViewed'
-          ? bell.visualFeedback
-          : 'Briefly'
+        tabVisualFeedback:
+          bell.tabVisualFeedback === 'None' || bell.tabVisualFeedback === 'UntilViewed'
+            ? bell.tabVisualFeedback
+            : bell.tabVisualFeedback === 'Briefly'
+              ? 'Briefly'
+              : 'UntilViewed',
+        workspaceVisualFeedback:
+          bell.workspaceVisualFeedback === 'None' ||
+          bell.workspaceVisualFeedback === 'UntilWorkspaceViewed'
+            ? bell.workspaceVisualFeedback
+            : 'UntilAllBellsViewed'
       },
       indicators: {
         showWorkspaceIndicator: indicators.showWorkspaceIndicator !== false,

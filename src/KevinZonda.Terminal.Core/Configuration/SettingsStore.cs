@@ -64,8 +64,10 @@ internal sealed class SettingsStore
         cursor["blink"] = normalized.Cursor.Blink;
 
         var bell = GetObject(root, "bell");
+        bell.Remove("visualFeedback");
         bell["sound"] = normalized.Bell.Sound;
-        bell["visualFeedback"] = normalized.Bell.VisualFeedback;
+        bell["tabVisualFeedback"] = normalized.Bell.TabVisualFeedback;
+        bell["workspaceVisualFeedback"] = normalized.Bell.WorkspaceVisualFeedback;
 
         var indicators = GetObject(root, "indicators");
         indicators["showWorkspaceIndicator"] = normalized.Indicators.ShowWorkspaceIndicator;

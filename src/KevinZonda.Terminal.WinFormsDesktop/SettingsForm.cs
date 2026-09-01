@@ -25,7 +25,8 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _showRemainingUsage = new();
     private readonly CheckBox _autoRenewKimiToken = new();
     private readonly ComboBox _bellSound = new();
-    private readonly ComboBox _bellVisualFeedback = new();
+    private readonly ComboBox _tabVisualFeedback = new();
+    private readonly ComboBox _workspaceVisualFeedback = new();
     private readonly ComboBox _lastTabClosedBehavior = new();
     private readonly ComboBox _lastWorkspaceClosedBehavior = new();
     private readonly TabControl _tabs = new();
@@ -514,7 +515,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 1,
-            RowCount = 8,
+            RowCount = 10,
             BackColor = SurfaceColor,
             Margin = new Padding(0)
         };
@@ -530,26 +531,33 @@ internal sealed class SettingsForm : Form
         _bellSound.Margin = new Padding(0, 5, 0, 18);
         layout.Controls.Add(_bellSound, 0, 1);
 
-        layout.Controls.Add(CreateLabel("Visual bell"), 0, 2);
-        ConfigureField(_bellVisualFeedback);
-        _bellVisualFeedback.DropDownStyle = ComboBoxStyle.DropDownList;
-        _bellVisualFeedback.DisplayMember = nameof(BehaviorOption.Label);
-        _bellVisualFeedback.Margin = new Padding(0, 5, 0, 18);
-        layout.Controls.Add(_bellVisualFeedback, 0, 3);
+        layout.Controls.Add(CreateLabel("Tab visual bell"), 0, 2);
+        ConfigureField(_tabVisualFeedback);
+        _tabVisualFeedback.DropDownStyle = ComboBoxStyle.DropDownList;
+        _tabVisualFeedback.DisplayMember = nameof(BehaviorOption.Label);
+        _tabVisualFeedback.Margin = new Padding(0, 5, 0, 18);
+        layout.Controls.Add(_tabVisualFeedback, 0, 3);
 
-        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 4);
+        layout.Controls.Add(CreateLabel("Workspace visual bell"), 0, 4);
+        ConfigureField(_workspaceVisualFeedback);
+        _workspaceVisualFeedback.DropDownStyle = ComboBoxStyle.DropDownList;
+        _workspaceVisualFeedback.DisplayMember = nameof(BehaviorOption.Label);
+        _workspaceVisualFeedback.Margin = new Padding(0, 5, 0, 18);
+        layout.Controls.Add(_workspaceVisualFeedback, 0, 5);
+
+        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 6);
         ConfigureField(_lastTabClosedBehavior);
         _lastTabClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
         _lastTabClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
         _lastTabClosedBehavior.Margin = new Padding(0, 5, 0, 18);
-        layout.Controls.Add(_lastTabClosedBehavior, 0, 5);
+        layout.Controls.Add(_lastTabClosedBehavior, 0, 7);
 
-        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 6);
+        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 8);
         ConfigureField(_lastWorkspaceClosedBehavior);
         _lastWorkspaceClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
         _lastWorkspaceClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
         _lastWorkspaceClosedBehavior.Margin = new Padding(0, 5, 0, 0);
-        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 7);
+        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 9);
 
         page.Controls.Add(layout);
         return page;
@@ -673,13 +681,25 @@ internal sealed class SettingsForm : Form
         ]);
         _bellSound.SelectedIndex = 1;
 
-        _bellVisualFeedback.Items.AddRange(
+        _tabVisualFeedback.Items.AddRange(
         [
             new BehaviorOption("None", BellSettings.NoVisualFeedback),
-            new BehaviorOption("Briefly", BellSettings.BriefVisualFeedback),
-            new BehaviorOption("Until viewed", BellSettings.UntilViewedVisualFeedback)
+            new BehaviorOption("Briefly", BellSettings.BriefTabVisualFeedback),
+            new BehaviorOption("Until viewed", BellSettings.UntilViewedTabVisualFeedback)
         ]);
-        _bellVisualFeedback.SelectedIndex = 1;
+        _tabVisualFeedback.SelectedIndex = 2;
+
+        _workspaceVisualFeedback.Items.AddRange(
+        [
+            new BehaviorOption("None", BellSettings.NoVisualFeedback),
+            new BehaviorOption(
+                "Until workspace viewed",
+                BellSettings.UntilWorkspaceViewedVisualFeedback),
+            new BehaviorOption(
+                "Until all bells viewed",
+                BellSettings.UntilAllBellsViewedVisualFeedback)
+        ]);
+        _workspaceVisualFeedback.SelectedIndex = 2;
     }
 
     private void ApplyValues(AppSettings settings)
@@ -710,7 +730,8 @@ internal sealed class SettingsForm : Form
             _showRemainingUsage.Checked = normalized.Indicators.ShowRemainingUsage;
             _autoRenewKimiToken.Checked = normalized.Indicators.AutoRenewKimiToken;
             SelectBehavior(_bellSound, normalized.Bell.Sound);
-            SelectBehavior(_bellVisualFeedback, normalized.Bell.VisualFeedback);
+            SelectBehavior(_tabVisualFeedback, normalized.Bell.TabVisualFeedback);
+            SelectBehavior(_workspaceVisualFeedback, normalized.Bell.WorkspaceVisualFeedback);
             SelectBehavior(_lastTabClosedBehavior, normalized.Workspace.LastTabClosedBehavior);
             SelectBehavior(
                 _lastWorkspaceClosedBehavior,
@@ -810,8 +831,10 @@ internal sealed class SettingsForm : Form
     {
         Sound = (_bellSound.SelectedItem as BehaviorOption)?.Value
             ?? BellSettings.Tone880To660HzSound,
-        VisualFeedback = (_bellVisualFeedback.SelectedItem as BehaviorOption)?.Value
-            ?? BellSettings.BriefVisualFeedback
+        TabVisualFeedback = (_tabVisualFeedback.SelectedItem as BehaviorOption)?.Value
+            ?? BellSettings.UntilViewedTabVisualFeedback,
+        WorkspaceVisualFeedback = (_workspaceVisualFeedback.SelectedItem as BehaviorOption)?.Value
+            ?? BellSettings.UntilAllBellsViewedVisualFeedback
     };
 
     private static void SelectBehavior(ComboBox comboBox, string value)

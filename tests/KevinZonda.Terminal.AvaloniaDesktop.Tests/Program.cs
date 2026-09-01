@@ -162,8 +162,12 @@ static async Task TestSettingsStoreAsync()
         "The default workspace lifecycle behaviors changed.");
     Require(defaults.Bell.Sound == BellSettings.Tone880To660HzSound,
         "The default bell sound changed.");
-    Require(defaults.Bell.VisualFeedback == BellSettings.BriefVisualFeedback,
-        "The default visual bell behavior changed.");
+    Require(defaults.Bell.TabVisualFeedback == BellSettings.UntilViewedTabVisualFeedback,
+        "The default tab visual bell behavior changed.");
+    Require(
+        defaults.Bell.WorkspaceVisualFeedback ==
+            BellSettings.UntilAllBellsViewedVisualFeedback,
+        "The default workspace visual bell behavior changed.");
 
     var path = Path.Combine(Path.GetTempPath(), $"kterm-settings-{Guid.NewGuid():N}.json");
     try
@@ -182,7 +186,12 @@ static async Task TestSettingsStoreAsync()
                 "lastTabClosedBehavior": "CloseWorkspace",
                 "lastWorkspaceClosedBehavior": "QuitApplication"
               },
-              "bell": { "sound": "None", "visualFeedback": "UntilViewed" },
+              "bell": {
+                "sound": "None",
+                "visualFeedback": "UntilViewed",
+                "tabVisualFeedback": "UntilViewed",
+                "workspaceVisualFeedback": "UntilWorkspaceViewed"
+              },
               "conHost": { "enhancedOpenConsole": true },
               "custom": { "preserve": 42 }
             }
@@ -196,8 +205,12 @@ static async Task TestSettingsStoreAsync()
             "The shared settings model did not load the ConHost configuration.");
         Require(loaded.Bell.Sound == BellSettings.NoneSound,
             "The shared settings model did not load the bell sound.");
-        Require(loaded.Bell.VisualFeedback == BellSettings.UntilViewedVisualFeedback,
-            "The shared settings model did not load the visual bell behavior.");
+        Require(loaded.Bell.TabVisualFeedback == BellSettings.UntilViewedTabVisualFeedback,
+            "The shared settings model did not load the tab visual bell behavior.");
+        Require(
+            loaded.Bell.WorkspaceVisualFeedback ==
+                BellSettings.UntilWorkspaceViewedVisualFeedback,
+            "The shared settings model did not load the workspace visual bell behavior.");
         Require(
             loaded.Workspace.LastTabClosedBehavior ==
                 WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior &&
@@ -225,7 +238,8 @@ static async Task TestSettingsStoreAsync()
             Bell = new BellSettings
             {
                 Sound = BellSettings.Tone880To660HzSound,
-                VisualFeedback = BellSettings.BriefVisualFeedback
+                TabVisualFeedback = BellSettings.BriefTabVisualFeedback,
+                WorkspaceVisualFeedback = BellSettings.UntilAllBellsViewedVisualFeedback
             },
             Workspace = new WorkspaceBehaviorSettings
             {
@@ -248,8 +262,14 @@ static async Task TestSettingsStoreAsync()
             "The shell exit behavior was not updated.");
         Require(root["bell"]?["sound"]?.GetValue<string>() == "880-660Hz",
             "The bell sound was not updated.");
-        Require(root["bell"]?["visualFeedback"]?.GetValue<string>() == "Briefly",
-            "The visual bell behavior was not updated.");
+        Require(root["bell"]?["tabVisualFeedback"]?.GetValue<string>() == "Briefly",
+            "The tab visual bell behavior was not updated.");
+        Require(
+            root["bell"]?["workspaceVisualFeedback"]?.GetValue<string>() ==
+                "UntilAllBellsViewed",
+            "The workspace visual bell behavior was not updated.");
+        Require(root["bell"]?["visualFeedback"] is null,
+            "The retired visual bell setting was preserved.");
         Require(
             root["workspace"]?["lastTabClosedBehavior"]?.GetValue<string>() == "OpenNewTab" &&
             root["workspace"]?["lastWorkspaceClosedBehavior"]?.GetValue<string>() ==

@@ -118,7 +118,9 @@ export class Workspace implements TerminalCallbacks {
   private readonly closedSessionIds = new Set<string>();
   private readonly pendingExitedSessionIds = new Set<string>();
   private readonly ringingBellSessionIds = new Set<string>();
-  private readonly unviewedBellSessionIds = new Set<string>();
+  private readonly unviewedTabBellSessionIds = new Set<string>();
+  private readonly unviewedWorkspaceBellSessionIds = new Set<string>();
+  private readonly unviewedBellWorkspaceIds = new Set<string>();
   private readonly bellFlashTimers = new Map<string, number>();
   private readonly workspaces: WorkspaceState[] = [];
   private readonly paneElements = new Map<string, HTMLElement>();
@@ -524,16 +526,31 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private showBellVisualFeedback(sessionId: string): void {
-    const mode = this.settings.bell.visualFeedback;
-    if (mode === 'None') {
+    const tabMode = this.settings.bell.tabVisualFeedback;
+    const workspaceMode = this.settings.bell.workspaceVisualFeedback;
+    if (tabMode === 'None' && workspaceMode === 'None') {
       return;
     }
 
     this.ringingBellSessionIds.add(sessionId);
-    if (mode === 'UntilViewed' && !this.isSessionViewed(sessionId)) {
-      this.unviewedBellSessionIds.add(sessionId);
+    if (tabMode === 'UntilViewed' && !this.isSessionViewed(sessionId)) {
+      this.unviewedTabBellSessionIds.add(sessionId);
     } else {
-      this.unviewedBellSessionIds.delete(sessionId);
+      this.unviewedTabBellSessionIds.delete(sessionId);
+    }
+    if (workspaceMode === 'UntilAllBellsViewed' && !this.isSessionViewed(sessionId)) {
+      this.unviewedWorkspaceBellSessionIds.add(sessionId);
+    } else {
+      this.unviewedWorkspaceBellSessionIds.delete(sessionId);
+    }
+
+    const match = this.findWorkspacePaneBySession(sessionId);
+    if (match && workspaceMode === 'UntilWorkspaceViewed') {
+      if (this.isWorkspaceViewed(match.workspace.id)) {
+        this.unviewedBellWorkspaceIds.delete(match.workspace.id);
+      } else {
+        this.unviewedBellWorkspaceIds.add(match.workspace.id);
+      }
     }
 
     const existingTimer = this.bellFlashTimers.get(sessionId);
@@ -560,21 +577,45 @@ export class Workspace implements TerminalCallbacks {
     );
   }
 
-  private clearViewedBell(sessionId: string): void {
-    if (!this.unviewedBellSessionIds.has(sessionId) || !this.isSessionViewed(sessionId)) {
-      return;
-    }
-    this.unviewedBellSessionIds.delete(sessionId);
-    this.refreshBellFeedback(sessionId);
+  private isWorkspaceViewed(workspaceId: string): boolean {
+    return workspaceId === this.activeWorkspaceId &&
+      document.visibilityState === 'visible' &&
+      document.hasFocus();
   }
 
-  private clearAllBellVisualFeedback(): void {
+  private clearViewedBell(sessionId: string): void {
+    const match = this.findWorkspacePaneBySession(sessionId);
+    if (!match) {
+      return;
+    }
+    let changed = false;
+    if (this.isSessionViewed(sessionId)) {
+      changed = this.unviewedTabBellSessionIds.delete(sessionId) || changed;
+      changed = this.unviewedWorkspaceBellSessionIds.delete(sessionId) || changed;
+    }
+    if (this.isWorkspaceViewed(match.workspace.id)) {
+      changed = this.unviewedBellWorkspaceIds.delete(match.workspace.id) || changed;
+    }
+    if (changed) {
+      this.refreshBellFeedback(sessionId);
+    }
+  }
+
+  private clearTabBellVisualFeedback(): void {
+    this.unviewedTabBellSessionIds.clear();
+    this.activeWorkspace?.panes.forEach(pane => this.refreshPaneTabs(pane));
+  }
+
+  private clearWorkspaceBellVisualFeedback(): void {
+    this.unviewedWorkspaceBellSessionIds.clear();
+    this.unviewedBellWorkspaceIds.clear();
+    this.workspaces.forEach(workspace => this.refreshBellWorkspace(workspace.id));
+  }
+
+  private clearBellRingingFeedback(): void {
     this.bellFlashTimers.forEach(timer => window.clearTimeout(timer));
     this.bellFlashTimers.clear();
     this.ringingBellSessionIds.clear();
-    this.unviewedBellSessionIds.clear();
-    this.activeWorkspace?.panes.forEach(pane => this.refreshPaneTabs(pane));
-    this.workspaces.forEach(workspace => this.refreshBellWorkspace(workspace.id));
   }
 
   private refreshBellFeedback(sessionId: string, restartWorkspaceAnimation = false): void {
@@ -589,12 +630,19 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private workspaceBellState(workspace: WorkspaceState): { ringing: boolean; unviewed: boolean } {
+    const mode = this.settings.bell.workspaceVisualFeedback;
+    if (mode === 'None') {
+      return { ringing: false, unviewed: false };
+    }
     let ringing = false;
-    let unviewed = false;
+    let unviewed = mode === 'UntilWorkspaceViewed' &&
+      this.unviewedBellWorkspaceIds.has(workspace.id);
     for (const pane of workspace.panes.values()) {
       for (const tab of pane.tabs) {
         ringing ||= this.ringingBellSessionIds.has(tab.sessionId);
-        unviewed ||= this.unviewedBellSessionIds.has(tab.sessionId);
+        if (mode === 'UntilAllBellsViewed') {
+          unviewed ||= this.unviewedWorkspaceBellSessionIds.has(tab.sessionId);
+        }
         if (ringing && unviewed) {
           return { ringing, unviewed };
         }
@@ -987,6 +1035,7 @@ export class Workspace implements TerminalCallbacks {
       }
     }
 
+    this.unviewedBellWorkspaceIds.delete(workspace.id);
     this.workspaces.splice(index, 1);
     if (wasActive) {
       this.activeWorkspaceId = this.workspaces[Math.min(index, this.workspaces.length - 1)]?.id;
@@ -1555,11 +1604,20 @@ export class Workspace implements TerminalCallbacks {
   private applySettings(settings: AppSettings): void {
     const usageDisplayChanged =
       this.settings.indicators.showRemainingUsage !== settings.indicators.showRemainingUsage;
-    const visualBellChanged =
-      this.settings.bell.visualFeedback !== settings.bell.visualFeedback;
+    const tabVisualBellChanged =
+      this.settings.bell.tabVisualFeedback !== settings.bell.tabVisualFeedback;
+    const workspaceVisualBellChanged =
+      this.settings.bell.workspaceVisualFeedback !== settings.bell.workspaceVisualFeedback;
     this.settings = settings;
-    if (visualBellChanged) {
-      this.clearAllBellVisualFeedback();
+    if (tabVisualBellChanged) {
+      this.clearTabBellVisualFeedback();
+    }
+    if (workspaceVisualBellChanged) {
+      this.clearWorkspaceBellVisualFeedback();
+    }
+    if (settings.bell.tabVisualFeedback === 'None' &&
+        settings.bell.workspaceVisualFeedback === 'None') {
+      this.clearBellRingingFeedback();
     }
     this.workspaceIndicator.hidden = !settings.indicators.showWorkspaceIndicator;
     if (settings.indicators.showWorkspaceIndicator) {
@@ -1729,8 +1787,11 @@ export class Workspace implements TerminalCallbacks {
       tabElement.className = 'pane-tab';
       tabElement.dataset.sessionId = tab.sessionId;
       tabElement.classList.toggle('active', tab.sessionId === pane.activeSessionId);
-      const bellRinging = this.ringingBellSessionIds.has(tab.sessionId);
-      const bellUnviewed = this.unviewedBellSessionIds.has(tab.sessionId);
+      const tabBellMode = this.settings.bell.tabVisualFeedback;
+      const bellRinging = tabBellMode !== 'None' &&
+        this.ringingBellSessionIds.has(tab.sessionId);
+      const bellUnviewed = tabBellMode === 'UntilViewed' &&
+        this.unviewedTabBellSessionIds.has(tab.sessionId);
       const hasBell = bellRinging || bellUnviewed;
       tabElement.classList.toggle('has-bell', hasBell);
       tabElement.classList.toggle('bell-ringing', bellRinging);
@@ -2128,7 +2189,8 @@ export class Workspace implements TerminalCallbacks {
       this.bellFlashTimers.delete(sessionId);
     }
     this.ringingBellSessionIds.delete(sessionId);
-    this.unviewedBellSessionIds.delete(sessionId);
+    this.unviewedTabBellSessionIds.delete(sessionId);
+    this.unviewedWorkspaceBellSessionIds.delete(sessionId);
     this.terminals.get(sessionId)?.dispose();
     this.terminals.delete(sessionId);
     this.earlyOutput.delete(sessionId);
