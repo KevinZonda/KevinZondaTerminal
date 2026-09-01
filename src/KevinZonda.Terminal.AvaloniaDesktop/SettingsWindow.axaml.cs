@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using KevinZonda.Terminal.Configuration;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
 
@@ -26,10 +27,12 @@ internal sealed partial class SettingsWindow : Window
     private readonly CheckBox _remainingUsage;
     private readonly CheckBox _autoRenewKimi;
     private readonly ComboBox _shellExitBehavior;
+    private AppSettings _basisSettings;
     private bool _applyingValues;
 
-    internal SettingsWindow(DesktopSettings settings)
+    internal SettingsWindow(AppSettings settings)
     {
+        _basisSettings = AppSettings.Normalize(settings);
         AvaloniaXamlLoader.Load(this);
         _fontFamily = Find<ComboBox>("FontFamilyBox");
         _fontSize = Find<NumericUpDown>("FontSizeBox");
@@ -56,7 +59,7 @@ internal sealed partial class SettingsWindow : Window
             .Order(StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
         _cursorShape.ItemsSource = new[] { "Block", "Underline", "Bar" };
-        _theme.ItemsSource = DesktopTerminalThemeCatalog.All.Select(theme => theme.Name).ToArray();
+        _theme.ItemsSource = TerminalThemeCatalog.All.Select(theme => theme.Name).ToArray();
         _shellExitBehavior.ItemsSource = new[] { "Keep tab open", "Close tab" };
 
         _fontFamily.PropertyChanged += (_, eventArgs) =>
@@ -72,31 +75,31 @@ internal sealed partial class SettingsWindow : Window
         ApplyValues(settings);
     }
 
-    internal DesktopSettings Settings => DesktopSettings.Normalize(new DesktopSettings
+    internal AppSettings Settings => AppSettings.Normalize(_basisSettings with
     {
-        Font = new DesktopFontSettings
+        Font = new FontSettings
         {
-            Family = _fontFamily.Text ?? DesktopFontSettings.DefaultFamily,
+            Family = _fontFamily.Text ?? AppSettings.DefaultFontFamily,
             Size = decimal.ToDouble(_fontSize.Value ?? 14),
             LineHeight = decimal.ToDouble(_lineHeight.Value ?? 1.12m),
             EnableLigatures = _ligatures.IsChecked == true
         },
-        Theme = new DesktopThemeSettings
+        Theme = new ThemeSettings
         {
-            Name = _theme.SelectedItem as string ?? DesktopTerminalThemeCatalog.DefaultName
+            Name = _theme.SelectedItem as string ?? TerminalThemeCatalog.DefaultName
         },
-        Cursor = new DesktopCursorSettings
+        Cursor = new CursorSettings
         {
             Shape = (_cursorShape.SelectedItem as string)?.ToLowerInvariant() ?? "bar",
             Blink = _cursorBlink.IsChecked == true
         },
-        Indicators = new DesktopIndicatorSettings
+        Indicators = new IndicatorSettings
         {
             ShowWorkspaceIndicator = _workspaceIndicator.IsChecked == true,
             ShowRemainingUsage = _remainingUsage.IsChecked == true,
             AutoRenewKimiToken = _autoRenewKimi.IsChecked == true
         },
-        Shell = new DesktopShellSettings
+        Shell = _basisSettings.Shell with
         {
             ExitBehavior = _shellExitBehavior.SelectedIndex == 1 ? "CloseTab" : "KeepTab"
         }
@@ -106,9 +109,10 @@ internal sealed partial class SettingsWindow : Window
         this.FindControl<T>(name) ?? throw new InvalidOperationException(
             $"Settings control '{name}' was not created.");
 
-    private void ApplyValues(DesktopSettings settings)
+    private void ApplyValues(AppSettings settings)
     {
-        var normalized = DesktopSettings.Normalize(settings);
+        var normalized = AppSettings.Normalize(settings);
+        _basisSettings = normalized;
         _applyingValues = true;
         try
         {
@@ -168,7 +172,7 @@ internal sealed partial class SettingsWindow : Window
             return;
         }
 
-        var preset = DesktopTerminalThemeCatalog.Find(_theme.SelectedItem as string);
+        var preset = TerminalThemeCatalog.Find(_theme.SelectedItem as string);
         _themePreview.Background = Brush.Parse(preset.Background);
         _themePreviewPrompt.Foreground = Brush.Parse(preset.Foreground);
         _themePreviewOutput.Foreground = Brush.Parse(preset.Foreground);
@@ -190,7 +194,7 @@ internal sealed partial class SettingsWindow : Window
     }
 
     private void HandleRestoreDefaults(object? sender, RoutedEventArgs eventArgs) =>
-        ApplyValues(new DesktopSettings());
+        ApplyValues(new AppSettings());
 
     private void HandleCancel(object? sender, RoutedEventArgs eventArgs) => Close(null);
 

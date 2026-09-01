@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.WebBridgeProtocol;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
@@ -13,7 +14,7 @@ internal sealed record BridgePayload
     public string? Version { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public DesktopSettings? Settings { get; init; }
+    public AppSettings? Settings { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public AgentUsageStatus? AgentUsage { get; init; }

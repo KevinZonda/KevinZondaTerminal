@@ -5,6 +5,7 @@ using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
+using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.WebBridgeProtocol;
 using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
@@ -19,10 +20,10 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     private readonly SystemMetricsService _systemMetrics;
     private readonly MainWindow _owner;
     private readonly string _workingDirectory;
-    private readonly DesktopSettingsStore _settingsStore = new();
+    private readonly SettingsStore _settingsStore = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _outputQueues = new();
     private readonly DispatcherTimer _outputTimer;
-    private DesktopSettings _settings;
+    private AppSettings _settings;
     private int _disposed;
 
     internal AvaloniaWebViewBridge(

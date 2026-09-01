@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using KevinZonda.Terminal.Configuration;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
 
@@ -166,7 +167,7 @@ public sealed partial class MainWindow : Window
             _sessions = new UnixTerminalSessionManager(_workingDirectory);
             _agentUsage = new AgentUsageStatusService(
                 _sessions,
-                new DesktopSettingsStore().Load());
+                new SettingsStore().Load());
             _systemMetrics = new SystemMetricsService();
             _systemMetrics.Start();
             _bridge = new AvaloniaWebViewBridge(
@@ -247,7 +248,7 @@ public sealed partial class MainWindow : Window
         await dialog.ShowDialog(this);
     }
 
-    internal async Task<DesktopSettings?> ShowSettingsAsync(DesktopSettings settings)
+    internal async Task<AppSettings?> ShowSettingsAsync(AppSettings settings)
     {
         if (_settingsWindow is { IsVisible: true } existing)
         {
@@ -259,7 +260,7 @@ public sealed partial class MainWindow : Window
         _settingsWindow = dialog;
         try
         {
-            return await dialog.ShowDialog<DesktopSettings?>(this);
+            return await dialog.ShowDialog<AppSettings?>(this);
         }
         finally
         {

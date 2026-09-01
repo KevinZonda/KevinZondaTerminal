@@ -1,6 +1,7 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.WebBridgeProtocol;
+using KevinZonda.Terminal.Configuration;
 using Avalonia.Input;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -41,7 +42,7 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.M, KeyModifiers.Meta | KeyModi
 Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
         MacOSWindowShortcut.None,
     "A non-macOS application shortcut was intercepted.");
-await TestDesktopSettingsStoreAsync();
+await TestSettingsStoreAsync();
 TestSourceGeneratedBridgeJson();
 TestTerminalThemeCatalog();
 
@@ -99,9 +100,9 @@ Console.WriteLine("PASS Avalonia terminal theme palettes");
 
 static void TestTerminalThemeCatalog()
 {
-    Require(DesktopTerminalThemeCatalog.All.Count == 7,
+    Require(TerminalThemeCatalog.All.Count == 7,
         "The Avalonia terminal theme catalog is incomplete.");
-    foreach (var theme in DesktopTerminalThemeCatalog.All)
+    foreach (var theme in TerminalThemeCatalog.All)
     {
         Require(theme.AnsiColors.Count == 16,
             $"Theme '{theme.Name}' does not define a complete ANSI palette.");
@@ -166,7 +167,7 @@ static void TestSourceGeneratedBridgeJson()
     }
 }
 
-static async Task TestDesktopSettingsStoreAsync()
+static async Task TestSettingsStoreAsync()
 {
     var path = Path.Combine(Path.GetTempPath(), $"kterm-settings-{Guid.NewGuid():N}.json");
     try
@@ -186,31 +187,40 @@ static async Task TestDesktopSettingsStoreAsync()
             }
             """);
 
-        var store = new DesktopSettingsStore(path);
-        var saved = await store.SaveAsync(new DesktopSettings
+        var store = new SettingsStore(path);
+        var loaded = store.Load();
+        Require(loaded.Shell.Profile == "msys2",
+            "The shared settings model did not load the Windows shell profile.");
+        Require(loaded.ConHost.EnhancedOpenConsole,
+            "The shared settings model did not load the ConHost configuration.");
+
+        var saved = await store.SaveAsync(loaded with
         {
-            Font = new DesktopFontSettings
+            Font = new FontSettings
             {
                 Family = "Menlo",
                 Size = 16,
                 LineHeight = 1.2,
                 EnableLigatures = true
             },
-            Theme = new DesktopThemeSettings { Name = "Ubuntu" },
-            Cursor = new DesktopCursorSettings { Shape = "block", Blink = false },
-            Indicators = new DesktopIndicatorSettings
+            Theme = new ThemeSettings { Name = "Ubuntu" },
+            Cursor = new CursorSettings { Shape = "block", Blink = false },
+            Indicators = new IndicatorSettings
             {
                 ShowWorkspaceIndicator = false,
                 ShowRemainingUsage = true,
                 AutoRenewKimiToken = true
             },
-            Shell = new DesktopShellSettings { ExitBehavior = "CloseTab" }
+            Shell = loaded.Shell with
+            {
+                ExitBehavior = "CloseTab"
+            }
         });
 
         Require(saved.Theme.Name == "Ubuntu", "The selected terminal theme was not saved.");
         var root = JsonNode.Parse(await File.ReadAllTextAsync(path)) as JsonObject
             ?? throw new InvalidOperationException("The saved settings file is not a JSON object.");
-        Require(root["shell"]?["profile"]?.GetValue<string>() == "Msys2",
+        Require(root["shell"]?["profile"]?.GetValue<string>() == "msys2",
             "Saving Unix settings removed the Windows shell profile.");
         Require(root["shell"]?["exitBehavior"]?.GetValue<string>() == "CloseTab",
             "The shell exit behavior was not updated.");
@@ -231,7 +241,7 @@ static async Task TestDesktopSettingsStoreAsync()
 static async Task TestLiveAgentUsageAsync()
 {
     await using var sessions = new UnixTerminalSessionManager(Environment.CurrentDirectory);
-    await using var usage = new AgentUsageStatusService(sessions, new DesktopSettings());
+    await using var usage = new AgentUsageStatusService(sessions, new AppSettings());
     var completed = new TaskCompletionSource<AgentProviderUsageStatus>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     usage.StatusChanged += status =>

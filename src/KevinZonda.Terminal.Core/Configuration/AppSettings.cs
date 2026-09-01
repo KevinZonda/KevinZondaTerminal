@@ -3,7 +3,7 @@ namespace KevinZonda.Terminal.Configuration;
 internal sealed record AppSettings
 {
     internal const string DefaultFontFamily =
-        "Cascadia Mono, Cascadia Code, Consolas, Microsoft YaHei, monospace";
+        "Cascadia Mono, Cascadia Code, Menlo, Consolas, Microsoft YaHei, monospace";
     internal const double DefaultFontSize = 14;
     internal const double DefaultLineHeight = 1.12;
 

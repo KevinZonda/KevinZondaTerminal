@@ -1,6 +1,7 @@
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.AgentUsageMonitor.Codex;
 using KevinZonda.AgentUsageMonitor.KimiCode;
+using KevinZonda.Terminal.Configuration;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
 
@@ -25,7 +26,7 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
     private Task? _monitorTask;
     private int _disposed;
 
-    internal AgentUsageStatusService(UnixTerminalSessionManager sessions, DesktopSettings settings)
+    internal AgentUsageStatusService(UnixTerminalSessionManager sessions, AppSettings settings)
     {
         _sessions = sessions;
         _clients = CreateClients(settings);
@@ -50,10 +51,10 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         _monitorTask ??= Task.Run(MonitorAsync);
     }
 
-    internal void UpdateSettings(DesktopSettings settings)
+    internal void UpdateSettings(AppSettings settings)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        _clients = CreateClients(DesktopSettings.Normalize(settings));
+        _clients = CreateClients(AppSettings.Normalize(settings));
     }
 
     internal bool RequestRefresh(UsageProvider provider)
@@ -99,7 +100,7 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         }
     }
 
-    private IReadOnlyDictionary<UsageProvider, IUsageClient> CreateClients(DesktopSettings settings) =>
+    private IReadOnlyDictionary<UsageProvider, IUsageClient> CreateClients(AppSettings settings) =>
         new Dictionary<UsageProvider, IUsageClient>
         {
             [UsageProvider.Codex] = new CodexUsageClient(_httpClient),
