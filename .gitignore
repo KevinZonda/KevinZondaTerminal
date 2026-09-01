@@ -10,3 +10,4 @@ artifacts/
 .vscode
 server_auth.json
 .DS_Store
+out
