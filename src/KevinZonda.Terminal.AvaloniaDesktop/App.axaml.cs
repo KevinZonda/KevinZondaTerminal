@@ -6,6 +6,8 @@ namespace KevinZonda.Terminal.AvaloniaDesktop;
 
 public sealed class App : Application
 {
+    private AboutWindow? _aboutWindow;
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -16,6 +18,47 @@ public sealed class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private async void HandleAboutClick(object? sender, EventArgs eventArgs)
+    {
+        if (_aboutWindow is { IsVisible: true } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        var dialog = new AboutWindow();
+        _aboutWindow = dialog;
+        try
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime
+                {
+                    MainWindow: { IsVisible: true } owner
+                })
+            {
+                await dialog.ShowDialog(owner);
+            }
+            else
+            {
+                dialog.Show();
+                dialog.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_aboutWindow, dialog))
+                    {
+                        _aboutWindow = null;
+                    }
+                };
+                return;
+            }
+        }
+        finally
+        {
+            if (!dialog.IsVisible && ReferenceEquals(_aboutWindow, dialog))
+            {
+                _aboutWindow = null;
+            }
+        }
     }
 
     private static string ResolveWorkingDirectory(string[]? args)

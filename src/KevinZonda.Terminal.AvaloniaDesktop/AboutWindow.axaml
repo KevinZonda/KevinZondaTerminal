@@ -1,0 +1,101 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="KevinZonda.Terminal.AvaloniaDesktop.AboutWindow"
+        Title="About KevinZonda Terminal"
+        Width="520"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#171B22">
+  <Window.Styles>
+    <Style Selector="TextBlock.secondary">
+      <Setter Property="Foreground" Value="#AAB3C0" />
+    </Style>
+    <Style Selector="Button.action">
+      <Setter Property="Padding" Value="16,7" />
+      <Setter Property="MinWidth" Value="88" />
+    </Style>
+  </Window.Styles>
+
+  <Grid Margin="28,24,28,22"
+        RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+        RowSpacing="10">
+    <Border Grid.Row="0"
+            Width="64"
+            Height="64"
+            HorizontalAlignment="Center"
+            Margin="0,0,0,4"
+            CornerRadius="14"
+            Background="#252C37"
+            BorderBrush="#88C0D0"
+            BorderThickness="1">
+      <TextBlock Text=">_"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Foreground="#88C0D0"
+                 FontFamily="Menlo, Cascadia Mono, monospace"
+                 FontSize="23"
+                 FontWeight="SemiBold" />
+    </Border>
+
+    <StackPanel Grid.Row="1" Spacing="3">
+      <TextBlock Text="KevinZonda Terminal"
+                 HorizontalAlignment="Center"
+                 Foreground="#D8DEE9"
+                 FontSize="22"
+                 FontWeight="SemiBold" />
+      <TextBlock x:Name="VersionText"
+                 Classes="secondary"
+                 HorizontalAlignment="Center"
+                 FontSize="13" />
+    </StackPanel>
+
+    <TextBlock Grid.Row="2"
+               Margin="10,4,10,0"
+               HorizontalAlignment="Center"
+               TextAlignment="Center"
+               TextWrapping="Wrap"
+               Foreground="#D8DEE9"
+               Text="A cross-platform terminal with workspaces, tabs, split panes, and native PTY sessions." />
+
+    <Border Grid.Row="3"
+            Margin="0,5,0,1"
+            Padding="14,11"
+            CornerRadius="8"
+            Background="#11151B">
+      <StackPanel Spacing="5">
+        <TextBlock x:Name="RuntimeText"
+                   Classes="secondary"
+                   HorizontalAlignment="Center"
+                   TextAlignment="Center"
+                   TextWrapping="Wrap" />
+        <TextBlock Text="Avalonia UI · xterm.js · Unix PTY"
+                   Classes="secondary"
+                   HorizontalAlignment="Center" />
+        <TextBlock x:Name="CommitText"
+                   Classes="secondary"
+                   HorizontalAlignment="Center"
+                   FontSize="12" />
+      </StackPanel>
+    </Border>
+
+    <Button Grid.Row="4"
+            HorizontalAlignment="Center"
+            Padding="10,5"
+            Click="HandleRepositoryClick">
+      <TextBlock Text="github.com/KevinZonda/KevinZondaTerminal"
+                 Foreground="#88C0D0" />
+    </Button>
+
+    <Separator Grid.Row="5" Margin="0,5,0,1" />
+
+    <Button Grid.Row="6"
+            Classes="action"
+            HorizontalAlignment="Right"
+            IsDefault="True"
+            IsCancel="True"
+            Content="OK"
+            Click="HandleCloseClick" />
+  </Grid>
+</Window>

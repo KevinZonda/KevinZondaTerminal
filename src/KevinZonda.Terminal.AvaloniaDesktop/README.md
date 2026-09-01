@@ -10,6 +10,7 @@
 - PTY 输入、输出、二进制输入、resize、退出状态和进程组清理。
 - Avalonia WebView 与现有 WebView2 Bridge 消息协议的适配。
 - 系统剪贴板、外部链接、新窗口和字体大小持久化。
+- macOS 原生应用菜单与 KevinZonda Terminal About 窗口。
 - macOS/Linux 系统 CPU 与物理内存用量监控。
 - Codex 与 Kimi Code 用量监控；对应 Agent 在终端进程树中运行时自动显示并每 5 分钟刷新。
 - 与 Windows 客户端共享 `~/.kterm/config.json`，更新字体大小时保留未知配置项。
