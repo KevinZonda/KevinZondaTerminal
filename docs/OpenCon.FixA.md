@@ -63,7 +63,7 @@ this.terminal.write('\x1b[2J');
 
 ## 3. 实现位置
 
-`src/KevinZonda.Terminal.Web/src/terminal-controller.ts`：
+`src/KevinZonda.Terminal.WebAssets/src/terminal-controller.ts`：
 
 - `onResize` 回调中（已有 `lastCols/lastRows` 去重逻辑处）重置
   settle 定时器；

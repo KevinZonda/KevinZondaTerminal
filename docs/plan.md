@@ -100,7 +100,9 @@ kevinzonda-terminal/
 │  │  ├─ Interop/
 │  │  ├─ Messaging/
 │  │  └─ wwwroot/           # 前端构建产物，不手工编辑
-│  └─ KevinZonda.Terminal.Web/
+│  └─ KevinZonda.Terminal.WebAssets/
+│     ├─ KevinZonda.Terminal.WebAssets.csproj
+│     ├─ EmbeddedWebAssets.cs
 │     ├─ package.json
 │     ├─ vite.config.ts
 │     └─ src/

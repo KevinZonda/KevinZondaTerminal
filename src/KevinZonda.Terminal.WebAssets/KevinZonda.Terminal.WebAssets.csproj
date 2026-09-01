@@ -3,7 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <WebProjectDir>$(MSBuildProjectDirectory)\..\KevinZonda.Terminal.Web</WebProjectDir>
+    <WebProjectDir>$(MSBuildProjectDirectory)</WebProjectDir>
   </PropertyGroup>
 
   <Target Name="BuildWebAssets" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">

@@ -54,7 +54,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: src/KevinZonda.Terminal.Web/pnpm-lock.yaml
+          cache-dependency-path: src/KevinZonda.Terminal.WebAssets/pnpm-lock.yaml
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -62,7 +62,7 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Install frontend dependencies
-        run: pnpm --dir src/KevinZonda.Terminal.Web install --frozen-lockfile
+        run: pnpm --dir src/KevinZonda.Terminal.WebAssets install --frozen-lockfile
 
       - name: Restore .NET dependencies
         run: |
