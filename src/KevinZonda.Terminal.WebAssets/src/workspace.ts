@@ -189,7 +189,7 @@ export class Workspace implements TerminalCallbacks {
     this.bridge.on('server.connectionChanged', event => {
       const state = this.payloadString(event, 'state');
       if (state === 'reconnecting') {
-        this.setStatus('Connection lost. Reconnecting…');
+        this.setStatus('Connection lost. Reconnecting...');
       } else if (state === 'replaced') {
         this.setStatus('This terminal is open in another page. Reload to take control.', true);
       } else if (state === 'connected' && event.payload.reconnected === true) {
@@ -226,7 +226,7 @@ export class Workspace implements TerminalCallbacks {
   }
 
   public async initialize(): Promise<void> {
-    this.setStatus('Starting KevinZonda Terminal…');
+    this.setStatus('Starting KevinZonda Terminal...');
     const initialState = await this.bridge.ready();
     this.applySettings(initialState.settings);
     this.renderSystemMetrics(initialState.systemMetrics);
@@ -467,7 +467,7 @@ export class Workspace implements TerminalCallbacks {
     }
 
     await this.runExclusive(async () => {
-      this.setStatus('Starting split shell…');
+      this.setStatus('Starting split shell...');
       // Estimate the new pane's size from the focused terminal so the ConPTY
       // starts close to its final dimensions and fullscreen apps do not redraw twice.
       const size = this.terminalSizeFor(pane);
@@ -767,7 +767,7 @@ export class Workspace implements TerminalCallbacks {
         break;
     }
   }
-
+...
   private async createWorkspaceCore(activate = false): Promise<void> {
     this.setStatus('Starting workspace…');
     const session = await this.bridge.createSession();
@@ -1293,7 +1293,7 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private async createTabInWorkspace(workspace: WorkspaceState, paneId?: string): Promise<void> {
-    const isActiveWorkspace = workspace.id === this.activeWorkspaceId;
+    const isActiveWorkspace = worksp...ce.id === this.activeWorkspaceId;
     if (isActiveWorkspace) {
       this.setStatus('Starting shell…');
     }
@@ -2304,7 +2304,7 @@ export class Workspace implements TerminalCallbacks {
     name.className = 'agent-usage-name';
     name.textContent = provider.provider === 'codex' ? 'Codex' : 'Kimi';
     item.append(name);
-
+...
     if (provider.state === 'loading') {
       item.append(this.agentUsageText('Loading usage…', 'agent-usage-message'));
     } else if (provider.windows.length === 0) {
@@ -2410,7 +2410,7 @@ export class Workspace implements TerminalCallbacks {
     }
 
     if (provider.windows.length === 0) {
-      const empty = document.createElement('div');
+      const empty = document.createElement('div');...
       empty.className = 'agent-usage-tooltip-empty';
       empty.textContent = provider.state === 'loading' ? 'Loading usage…' : 'Usage details unavailable';
       content.append(empty);

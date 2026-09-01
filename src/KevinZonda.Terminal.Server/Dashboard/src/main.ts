@@ -442,7 +442,7 @@ function formatNumber(value: number): string {
 }
 
 function shortId(value: string): string {
-  return value.length <= 12 ? value : `${value.slice(0, 8)}…${value.slice(-4)}`;
+  return value.length <= 12 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
 }
 
 function escapeHtml(value: string): string {
