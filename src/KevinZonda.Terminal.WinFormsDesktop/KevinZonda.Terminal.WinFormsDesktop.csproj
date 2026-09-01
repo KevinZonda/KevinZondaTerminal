@@ -12,7 +12,7 @@
     <Product>KevinZonda Terminal</Product>
     <Version>0.1.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <ApplicationIcon>..\KevinZonda.Terminal\Assets\WinFormsDefault.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\WinFormsDefault.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' == 'win-x64'">

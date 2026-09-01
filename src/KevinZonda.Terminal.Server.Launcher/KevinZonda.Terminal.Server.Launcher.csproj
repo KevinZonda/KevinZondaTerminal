@@ -8,7 +8,7 @@
     <AssemblyName>kterm-server-launcher</AssemblyName>
     <RootNamespace>KevinZonda.Terminal.Server.Launcher</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <ApplicationIcon>..\KevinZonda.Terminal\Assets\WinFormsDefault.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\WinFormsDefault.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' == 'win-x64'">

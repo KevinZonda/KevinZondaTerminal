@@ -5,7 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 project="$repo_root/src/KevinZonda.Terminal.AvaloniaDesktop/KevinZonda.Terminal.AvaloniaDesktop.csproj"
-icon_source="$repo_root/src/KevinZonda.Terminal/Assets/WinFormsDefault.ico"
+icon_source="$repo_root/assets/WinFormsDefault.ico"
 plist_template="$repo_root/packaging/macos/Info.plist.in"
 entitlements="$repo_root/packaging/macos/entitlements.plist"
 

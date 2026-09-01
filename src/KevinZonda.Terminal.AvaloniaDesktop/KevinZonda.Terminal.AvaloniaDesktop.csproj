@@ -9,7 +9,7 @@
     <AssemblyTitle>KevinZonda Terminal</AssemblyTitle>
     <Product>KevinZonda Terminal</Product>
     <Version>0.1.0</Version>
-    <ApplicationIcon>..\KevinZonda.Terminal\Assets\WinFormsDefault.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\WinFormsDefault.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="..\KevinZonda.Terminal\Assets\WinFormsDefault.ico"
+    <AvaloniaResource Include="..\..\assets\WinFormsDefault.ico"
                      Link="Assets\WinFormsDefault.ico" />
   </ItemGroup>
 
