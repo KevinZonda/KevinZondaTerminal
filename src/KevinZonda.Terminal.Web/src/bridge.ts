@@ -339,14 +339,6 @@ export class NativeBridge {
     window.open(window.location.href, '_blank', 'noopener');
   }
 
-  public quitApplication(): boolean {
-    if (!this.webView) {
-      return false;
-    }
-    this.send('window.quit', {});
-    return true;
-  }
-
   public openExternal(uri: string): void {
     if (this.webView) {
       this.send('window.openExternal', { uri });

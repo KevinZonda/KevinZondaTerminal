@@ -662,13 +662,6 @@ export class Workspace implements TerminalCallbacks {
       return;
     }
 
-    if (Workspace.USE_META_APPLICATION_SHORTCUTS && event.code === 'KeyQ' &&
-        this.hasApplicationShortcutModifier(event) && this.bridge.quitApplication()) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-
     if (event.key === 'Escape' && this.activeUsageAnchor === document.activeElement) {
       event.preventDefault();
       event.stopImmediatePropagation();

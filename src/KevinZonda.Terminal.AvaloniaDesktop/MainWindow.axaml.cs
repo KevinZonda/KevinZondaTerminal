@@ -1,4 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 
@@ -13,6 +16,7 @@ public sealed partial class MainWindow : Window
     private AgentUsageStatusService? _agentUsage;
     private SystemMetricsService? _systemMetrics;
     private AvaloniaWebViewBridge? _bridge;
+    private WindowState? _windowStateBeforeFullScreen;
     private bool _initialized;
     private bool _canClose;
     private bool _cleanupStarted;
@@ -26,6 +30,7 @@ public sealed partial class MainWindow : Window
     {
         _workingDirectory = workingDirectory;
         InitializeComponent();
+        AddHandler(InputElement.KeyDownEvent, HandleMacOSWindowShortcut, handledEventsToo: true);
         Opened += HandleOpened;
         Closing += HandleClosing;
     }
@@ -35,6 +40,99 @@ public sealed partial class MainWindow : Window
         AvaloniaXamlLoader.Load(this);
         _webView = this.FindControl<NativeWebView>("WebView")
             ?? throw new InvalidOperationException("The NativeWebView control was not created.");
+    }
+
+    private void HandleMacOSWindowShortcut(object? sender, KeyEventArgs eventArgs)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var handled = ResolveMacOSWindowShortcut(eventArgs.Key, eventArgs.KeyModifiers) switch
+        {
+            MacOSWindowShortcut.Minimize => MinimizeWindow(),
+            MacOSWindowShortcut.MinimizeAll => MinimizeAllWindows(),
+            MacOSWindowShortcut.HideApplication => HideApplication(),
+            MacOSWindowShortcut.ToggleFullScreen => ToggleFullScreen(),
+            MacOSWindowShortcut.QuitApplication => QuitApplication(),
+            _ => false
+        };
+
+        if (handled)
+        {
+            eventArgs.Handled = true;
+        }
+    }
+
+    internal static MacOSWindowShortcut ResolveMacOSWindowShortcut(
+        Key key,
+        KeyModifiers modifiers) => (key, modifiers) switch
+        {
+            (Key.M, KeyModifiers.Meta) => MacOSWindowShortcut.Minimize,
+            (Key.M, KeyModifiers.Meta | KeyModifiers.Alt) => MacOSWindowShortcut.MinimizeAll,
+            (Key.H, KeyModifiers.Meta) => MacOSWindowShortcut.HideApplication,
+            (Key.F, KeyModifiers.Meta | KeyModifiers.Control) => MacOSWindowShortcut.ToggleFullScreen,
+            (Key.Q, KeyModifiers.Meta) => MacOSWindowShortcut.QuitApplication,
+            _ => MacOSWindowShortcut.None
+        };
+
+    private bool MinimizeWindow()
+    {
+        if (!CanMinimize)
+        {
+            return false;
+        }
+
+        WindowState = WindowState.Minimized;
+        return true;
+    }
+
+    private static bool MinimizeAllWindows()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return false;
+        }
+
+        var handled = false;
+        foreach (var window in desktop.Windows)
+        {
+            if (!window.IsVisible || !window.CanMinimize || window.Owner is not null)
+            {
+                continue;
+            }
+
+            window.WindowState = WindowState.Minimized;
+            handled = true;
+        }
+
+        return handled;
+    }
+
+    private static bool HideApplication() =>
+        Application.Current?.TryGetFeature<IActivatableLifetime>()?.TryEnterBackground() == true;
+
+    private bool QuitApplication()
+    {
+        Close();
+        return true;
+    }
+
+    private bool ToggleFullScreen()
+    {
+        if (WindowState == WindowState.FullScreen)
+        {
+            WindowState = _windowStateBeforeFullScreen ?? WindowState.Normal;
+            _windowStateBeforeFullScreen = null;
+        }
+        else
+        {
+            _windowStateBeforeFullScreen = WindowState;
+            WindowState = WindowState.FullScreen;
+        }
+
+        return true;
     }
 
     private async void HandleOpened(object? sender, EventArgs eventArgs)
@@ -150,4 +248,14 @@ public sealed partial class MainWindow : Window
         };
         await dialog.ShowDialog(this);
     }
+}
+
+internal enum MacOSWindowShortcut
+{
+    None,
+    Minimize,
+    MinimizeAll,
+    HideApplication,
+    ToggleFullScreen,
+    QuitApplication
 }

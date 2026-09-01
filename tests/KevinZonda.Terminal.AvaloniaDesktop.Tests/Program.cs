@@ -1,5 +1,6 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
 using KevinZonda.AgentUsageMonitor;
+using Avalonia.Input;
 
 if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
 {
@@ -12,6 +13,28 @@ if (args.Contains("--live-agent-usage", StringComparer.OrdinalIgnoreCase))
     await TestLiveAgentUsageAsync();
     return;
 }
+
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.M, KeyModifiers.Meta) ==
+        MacOSWindowShortcut.Minimize,
+    "Command-M was not recognized as Minimize.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.M, KeyModifiers.Meta | KeyModifiers.Alt) ==
+        MacOSWindowShortcut.MinimizeAll,
+    "Option-Command-M was not recognized as Minimize All.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Meta) ==
+        MacOSWindowShortcut.HideApplication,
+    "Command-H was not recognized as Hide Application.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.F, KeyModifiers.Meta | KeyModifiers.Control) ==
+        MacOSWindowShortcut.ToggleFullScreen,
+    "Control-Command-F was not recognized as Toggle Full Screen.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.Q, KeyModifiers.Meta) ==
+        MacOSWindowShortcut.QuitApplication,
+    "Command-Q was not recognized as Quit Application.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.M, KeyModifiers.Meta | KeyModifiers.Shift) ==
+        MacOSWindowShortcut.None,
+    "An unsupported shifted shortcut was intercepted.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
+        MacOSWindowShortcut.None,
+    "A non-macOS application shortcut was intercepted.");
 
 var detected = UnixAgentProcessDetector.DetectSnapshot(
     """
@@ -60,6 +83,7 @@ Console.WriteLine(
     $"PASS system metrics: CPU {status.CpuPercent:F1}%, " +
     $"memory {status.UsedMemoryBytes}/{status.TotalMemoryBytes} bytes");
 Console.WriteLine("PASS Unix agent process detection");
+Console.WriteLine("PASS macOS window shortcut mapping");
 
 static async Task TestLiveAgentUsageAsync()
 {
