@@ -12,7 +12,6 @@
   <Project Path="src/KevinZonda.Terminal.Server.Login/KevinZonda.Terminal.Server.Login.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.UserAuth/KevinZonda.Terminal.Server.UserAuth.csproj" />
   <Project Path="src/KevinZonda.Terminal.UnixPty/KevinZonda.Terminal.UnixPty.csproj" />
-  <Project Path="src/KevinZonda.Terminal.WebBridgeProtocol/KevinZonda.Terminal.WebBridgeProtocol.csproj" />
   <Project Path="src/KevinZonda.Terminal.WinFormsDesktop/KevinZonda.Terminal.WinFormsDesktop.csproj" />
   <Project Path="tests/KevinZonda.AgentUsageMonitor.Tests/KevinZonda.AgentUsageMonitor.Tests.csproj" />
   <Project Path="tests/KevinZonda.Terminal.AvaloniaDesktop.Tests/KevinZonda.Terminal.AvaloniaDesktop.Tests.csproj" />

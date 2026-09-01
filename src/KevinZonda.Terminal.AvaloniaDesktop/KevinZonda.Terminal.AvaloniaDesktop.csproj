@@ -27,7 +27,6 @@
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.UnixPty\KevinZonda.Terminal.UnixPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
-    <ProjectReference Include="..\KevinZonda.Terminal.WebBridgeProtocol\KevinZonda.Terminal.WebBridgeProtocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
