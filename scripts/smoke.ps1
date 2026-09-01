@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repositoryRoot 'src\KevinZonda.Terminal\KevinZonda.Terminal.csproj'
-$executable = Join-Path $repositoryRoot 'src\KevinZonda.Terminal\bin\Debug\net10.0-windows\KevinZonda.Terminal.exe'
+$project = Join-Path $repositoryRoot 'src\KevinZonda.Terminal.WinFormsDesktop\KevinZonda.Terminal.WinFormsDesktop.csproj'
+$executable = Join-Path $repositoryRoot 'src\KevinZonda.Terminal.WinFormsDesktop\bin\Debug\net10.0-windows\KevinZonda.Terminal.exe'
 $environmentProbe = Join-Path ([IO.Path]::GetTempPath()) "kterm-smoke-$([Guid]::NewGuid().ToString('N')).txt"
 $completionProbe = Join-Path ([IO.Path]::GetTempPath()) "kterm-smoke-complete-$([Guid]::NewGuid().ToString('N')).txt"
 $recentWorkspaceProbe = Join-Path ([IO.Path]::GetTempPath()) "kterm-smoke-recent-$([Guid]::NewGuid().ToString('N')).json"

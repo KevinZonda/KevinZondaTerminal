@@ -1,5 +1,5 @@
 SOLUTION := KevinZonda.Terminal.slnx
-PROJECT := src/KevinZonda.Terminal/KevinZonda.Terminal.csproj
+PROJECT := src/KevinZonda.Terminal.WinFormsDesktop/KevinZonda.Terminal.WinFormsDesktop.csproj
 AVALONIA_PROJECT := src/KevinZonda.Terminal.AvaloniaDesktop/KevinZonda.Terminal.AvaloniaDesktop.csproj
 SERVER_PROJECT := src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.csproj
 LAUNCHER_PROJECT := src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.Server.Launcher.csproj
@@ -13,7 +13,7 @@ SMOKE_TEST := scripts/smoke.ps1
 SERVER_SMOKE_TEST := scripts/server-smoke.ps1
 SERVER_AUTH_SMOKE_TEST := scripts/server-auth-smoke.ps1
 SERVER_LAUNCHER_SMOKE_TEST := scripts/server-launcher-smoke.ps1
-PUBLISH_DIR := src/KevinZonda.Terminal/bin/Release/net10.0-windows/win-x64/publish
+PUBLISH_DIR := src/KevinZonda.Terminal.WinFormsDesktop/bin/Release/net10.0-windows/win-x64/publish
 PUBLISH_EXE := $(PUBLISH_DIR)/KevinZonda.Terminal.exe
 SERVER_PUBLISH_DIR := src/KevinZonda.Terminal.Server/bin/Release/net10.0-windows/win-x64/publish
 SERVER_PUBLISH_EXE := $(SERVER_PUBLISH_DIR)/kterm-server.exe

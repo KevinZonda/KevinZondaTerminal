@@ -12,7 +12,7 @@
     <Product>KevinZonda Terminal</Product>
     <Version>0.1.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <ApplicationIcon>Assets\WinFormsDefault.ico</ApplicationIcon>
+    <ApplicationIcon>..\KevinZonda.Terminal\Assets\WinFormsDefault.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' == 'win-x64'">
@@ -36,14 +36,6 @@
     <ProjectReference Include="..\KevinZonda.Terminal.RecentWorkspaces\KevinZonda.Terminal.RecentWorkspaces.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebBridgeProtocol\KevinZonda.Terminal.WebBridgeProtocol.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="Configuration\**\*.cs" />
-    <Compile Remove="Interop\**\*.cs" />
-    <Compile Remove="Monitoring\**\*.cs" />
-    <Compile Remove="Terminal\**\*.cs" />
-    <Compile Remove="Usage\**\*.cs" />
   </ItemGroup>
 
   <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">

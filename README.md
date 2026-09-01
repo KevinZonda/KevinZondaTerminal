@@ -46,7 +46,7 @@ Windows 桌面端构建需要：
 
 ```powershell
 dotnet build KevinZonda.Terminal.slnx
-dotnet run --project src\KevinZonda.Terminal\KevinZonda.Terminal.csproj
+dotnet run --project src\KevinZonda.Terminal.WinFormsDesktop\KevinZonda.Terminal.WinFormsDesktop.csproj
 ```
 
 macOS/Linux Avalonia 预览版复用同一套终端前端，运行方法如下：
@@ -243,7 +243,7 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke.ps1
 发布启用 ReadyToRun 的 framework-dependent win-x64 版本：
 
 ```powershell
-dotnet publish src\KevinZonda.Terminal\KevinZonda.Terminal.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true
+dotnet publish src\KevinZonda.Terminal.WinFormsDesktop\KevinZonda.Terminal.WinFormsDesktop.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true
 ```
 
 ## GitHub Actions 构建
