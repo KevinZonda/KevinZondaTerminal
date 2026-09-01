@@ -30,6 +30,7 @@ export interface AppSettings {
   font: FontSettings;
   theme: ThemeSettings;
   cursor: CursorSettings;
+  bell: BellSettings;
   indicators: IndicatorSettings;
   workspace: WorkspaceBehaviorSettings;
   shell: ShellSettings;
@@ -42,6 +43,10 @@ export interface ThemeSettings {
 export interface CursorSettings {
   shape: 'block' | 'underline' | 'bar';
   blink: boolean;
+}
+
+export interface BellSettings {
+  sound: 'None' | '880-660Hz';
 }
 
 export interface IndicatorSettings {
@@ -130,6 +135,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cursor: {
     shape: 'bar',
     blink: true
+  },
+  bell: {
+    sound: '880-660Hz'
   },
   indicators: {
     showWorkspaceIndicator: true,
@@ -415,6 +423,9 @@ export class NativeBridge {
     const cursor = typeof partialSettings.cursor === 'object' && partialSettings.cursor !== null
       ? partialSettings.cursor
       : DEFAULT_SETTINGS.cursor;
+    const bell = typeof partialSettings.bell === 'object' && partialSettings.bell !== null
+      ? partialSettings.bell
+      : DEFAULT_SETTINGS.bell;
     const indicators = typeof partialSettings.indicators === 'object' && partialSettings.indicators !== null
       ? partialSettings.indicators
       : DEFAULT_SETTINGS.indicators;
@@ -452,6 +463,9 @@ export class NativeBridge {
           ? cursor.shape
           : 'bar',
         blink: cursor.blink !== false
+      },
+      bell: {
+        sound: bell.sound === 'None' ? 'None' : '880-660Hz'
       },
       indicators: {
         showWorkspaceIndicator: indicators.showWorkspaceIndicator !== false,

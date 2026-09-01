@@ -9,6 +9,7 @@ import type {
   SessionCreated,
   SystemMetricsStatus
 } from './bridge';
+import { BellPlayer } from './bell-player';
 import { TerminalController } from './terminal-controller';
 import type { MobileToolbarKey, TerminalCallbacks } from './terminal-controller';
 import { createId } from './id';
@@ -108,6 +109,7 @@ export class Workspace implements TerminalCallbacks {
   private readonly mobileInputToolbar: HTMLElement;
   private readonly mobileControlButton: HTMLButtonElement;
   private readonly coarsePointer = window.matchMedia('(pointer: coarse)');
+  private readonly bellPlayer = new BellPlayer();
   private mobileViewportBaselineHeight = window.visualViewport?.height ?? window.innerHeight;
   private mobileViewportBaselineWidth = window.visualViewport?.width ?? window.innerWidth;
   private readonly terminals = new Map<string, TerminalController>();
@@ -507,6 +509,12 @@ export class Workspace implements TerminalCallbacks {
     pane.activeSessionId = sessionId;
     workspace.focusedPaneId = pane.id;
     this.updateFocusState();
+  }
+
+  public onBell(_sessionId: string): void {
+    if (this.settings.bell.sound !== 'None') {
+      this.bellPlayer.play();
+    }
   }
 
   public onControlModifierChanged(sessionId: string, _active: boolean): void {

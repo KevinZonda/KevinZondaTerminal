@@ -10,6 +10,7 @@ import type { TerminalCheckpoint } from './resume-store';
 import { resolveTerminalTheme } from './themes';
 
 export interface TerminalCallbacks {
+  onBell(sessionId: string): void;
   onControlModifierChanged(sessionId: string, active: boolean): void;
   onFocus(sessionId: string): void;
   onFontSizeChanged(sessionId: string, fontSize: number): void;
@@ -128,6 +129,7 @@ export class TerminalController {
     this.terminal.loadAddon(new WebLinksAddon((_event, uri) => this.bridge.openExternal(uri)));
 
     this.disposables.push(
+      this.terminal.onBell(() => this.callbacks.onBell(this.sessionId)),
       this.terminal.onData(data => this.handleTerminalData(data)),
       this.terminal.onBinary(data => this.bridge.sendBinaryInput(this.sessionId, data)),
       this.terminal.onTitleChange(title => this.callbacks.onTitle(this.sessionId, title)),

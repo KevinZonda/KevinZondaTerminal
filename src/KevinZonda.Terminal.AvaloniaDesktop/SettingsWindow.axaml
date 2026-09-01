@@ -144,6 +144,9 @@
 
       <TabItem Header="Behaviour">
         <StackPanel Margin="18" Spacing="8">
+          <TextBlock Classes="field-label" Text="Bell sound" />
+          <ComboBox x:Name="BellSoundBox" Margin="0,0,0,12" />
+
           <TextBlock Classes="field-label"
                      Text="When the last tab in a workspace closes" />
           <ComboBox x:Name="LastTabClosedBehaviorBox" Margin="0,0,0,12" />

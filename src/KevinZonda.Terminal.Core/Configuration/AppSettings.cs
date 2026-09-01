@@ -13,6 +13,8 @@ internal sealed record AppSettings
 
     public CursorSettings Cursor { get; init; } = new();
 
+    public BellSettings Bell { get; init; } = new();
+
     public IndicatorSettings Indicators { get; init; } = new();
 
     public WorkspaceBehaviorSettings Workspace { get; init; } = new();
@@ -49,12 +51,26 @@ internal sealed record AppSettings
                 Name = theme.Name
             },
             Cursor = CursorSettings.Normalize(settings?.Cursor),
+            Bell = BellSettings.Normalize(settings?.Bell),
             Indicators = IndicatorSettings.Normalize(settings?.Indicators),
             Workspace = WorkspaceBehaviorSettings.Normalize(settings?.Workspace),
             Shell = ShellSettings.Normalize(settings?.Shell),
             ConHost = ConHostSettings.Normalize(settings?.ConHost)
         };
     }
+}
+
+internal sealed record BellSettings
+{
+    internal const string NoneSound = "None";
+    internal const string Tone880To660HzSound = "880-660Hz";
+
+    public string Sound { get; init; } = Tone880To660HzSound;
+
+    internal static BellSettings Normalize(BellSettings? settings) => new()
+    {
+        Sound = settings?.Sound == NoneSound ? NoneSound : Tone880To660HzSound
+    };
 }
 
 internal sealed record WorkspaceBehaviorSettings

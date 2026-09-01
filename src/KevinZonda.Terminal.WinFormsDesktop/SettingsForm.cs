@@ -24,6 +24,7 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _showWorkspaceIndicator = new();
     private readonly CheckBox _showRemainingUsage = new();
     private readonly CheckBox _autoRenewKimiToken = new();
+    private readonly ComboBox _bellSound = new();
     private readonly ComboBox _lastTabClosedBehavior = new();
     private readonly ComboBox _lastWorkspaceClosedBehavior = new();
     private readonly TabControl _tabs = new();
@@ -61,6 +62,7 @@ internal sealed class SettingsForm : Form
         PopulateShellProfiles();
         PopulateMsys2Environments();
         PopulateShellExitBehaviors();
+        PopulateBellSounds();
         PopulateWorkspaceBehaviors();
         ApplyValues(settings);
     }
@@ -90,6 +92,7 @@ internal sealed class SettingsForm : Form
             ShowRemainingUsage = _showRemainingUsage.Checked,
             AutoRenewKimiToken = _autoRenewKimiToken.Checked
         },
+        Bell = SelectedBellSettings(),
         Workspace = SelectedWorkspaceBehaviorSettings(),
         Shell = SelectedShellSettings(),
         ConHost = new ConHostSettings
@@ -158,7 +161,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(16),
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 6,
             BackColor = SurfaceColor
         };
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -519,19 +522,26 @@ internal sealed class SettingsForm : Form
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
 
-        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 0);
+        layout.Controls.Add(CreateLabel("Bell sound"), 0, 0);
+        ConfigureField(_bellSound);
+        _bellSound.DropDownStyle = ComboBoxStyle.DropDownList;
+        _bellSound.DisplayMember = nameof(BehaviorOption.Label);
+        _bellSound.Margin = new Padding(0, 5, 0, 18);
+        layout.Controls.Add(_bellSound, 0, 1);
+
+        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 2);
         ConfigureField(_lastTabClosedBehavior);
         _lastTabClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
         _lastTabClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
         _lastTabClosedBehavior.Margin = new Padding(0, 5, 0, 18);
-        layout.Controls.Add(_lastTabClosedBehavior, 0, 1);
+        layout.Controls.Add(_lastTabClosedBehavior, 0, 3);
 
-        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 2);
+        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 4);
         ConfigureField(_lastWorkspaceClosedBehavior);
         _lastWorkspaceClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
         _lastWorkspaceClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
         _lastWorkspaceClosedBehavior.Margin = new Padding(0, 5, 0, 0);
-        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 3);
+        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 5);
 
         page.Controls.Add(layout);
         return page;
@@ -646,6 +656,16 @@ internal sealed class SettingsForm : Form
         _lastWorkspaceClosedBehavior.SelectedIndex = 1;
     }
 
+    private void PopulateBellSounds()
+    {
+        _bellSound.Items.AddRange(
+        [
+            new BehaviorOption("None", BellSettings.NoneSound),
+            new BehaviorOption("880–660 Hz", BellSettings.Tone880To660HzSound)
+        ]);
+        _bellSound.SelectedIndex = 1;
+    }
+
     private void ApplyValues(AppSettings settings)
     {
         var normalized = AppSettings.Normalize(settings);
@@ -673,6 +693,7 @@ internal sealed class SettingsForm : Form
             _showWorkspaceIndicator.Checked = normalized.Indicators.ShowWorkspaceIndicator;
             _showRemainingUsage.Checked = normalized.Indicators.ShowRemainingUsage;
             _autoRenewKimiToken.Checked = normalized.Indicators.AutoRenewKimiToken;
+            SelectBehavior(_bellSound, normalized.Bell.Sound);
             SelectBehavior(_lastTabClosedBehavior, normalized.Workspace.LastTabClosedBehavior);
             SelectBehavior(
                 _lastWorkspaceClosedBehavior,
@@ -766,6 +787,12 @@ internal sealed class SettingsForm : Form
         LastWorkspaceClosedBehavior =
             (_lastWorkspaceClosedBehavior.SelectedItem as BehaviorOption)?.Value
                 ?? WorkspaceBehaviorSettings.CreateWorkspaceLastWorkspaceBehavior
+    };
+
+    private BellSettings SelectedBellSettings() => new()
+    {
+        Sound = (_bellSound.SelectedItem as BehaviorOption)?.Value
+            ?? BellSettings.Tone880To660HzSound
     };
 
     private static void SelectBehavior(ComboBox comboBox, string value)
