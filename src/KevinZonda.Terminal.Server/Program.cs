@@ -1,10 +1,10 @@
 using System.Net.WebSockets;
+using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Server.UserAuth;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Server;
 using KevinZonda.Terminal.Server.Dashboard;
 using KevinZonda.Terminal.Server.Login;
-using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
@@ -16,7 +16,7 @@ if (args.Length > 0 && string.Equals(args[0], "auth", StringComparison.OrdinalIg
     return;
 }
 
-if (ConsoleThemeHelper.TryRun(args, out var helperExitCode))
+if (ConPtyConsoleThemeHelper.TryRun(args, out var helperExitCode))
 {
     Environment.ExitCode = helperExitCode;
     return;

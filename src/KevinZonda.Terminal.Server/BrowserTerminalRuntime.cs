@@ -1,6 +1,7 @@
 using System.Text;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.Configuration;
+using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Monitoring;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
@@ -41,7 +42,10 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         Id = id;
         _settings = settings;
         _runtimeRetention = options.RuntimeRetention;
-        _sessions = new TerminalSessionManager(settings, options.StartingDirectory);
+        _sessions = new TerminalSessionManager(
+            settings,
+            options.StartingDirectory,
+            ConPtyTerminalSessionFactory.Instance);
         _agentUsage = new AgentUsageStatusService(_sessions, settings);
         _systemMetrics = new SystemMetricsService();
 

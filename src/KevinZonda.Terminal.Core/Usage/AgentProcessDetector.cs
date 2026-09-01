@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using KevinZonda.AgentUsageMonitor;
-using KevinZonda.Terminal.Interop;
 
 namespace KevinZonda.Terminal.Usage;
 
@@ -94,4 +93,47 @@ internal sealed class AgentProcessDetector
     }
 
     private sealed record ProcessEntry(uint ProcessId, string ExecutableName);
+
+    private static class NativeMethods
+    {
+        internal const uint Th32csSnapProcess = 0x0000_0002;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        internal struct ProcessEntry32
+        {
+            internal uint dwSize;
+            internal uint cntUsage;
+            internal uint th32ProcessID;
+            internal IntPtr th32DefaultHeapID;
+            internal uint th32ModuleID;
+            internal uint cntThreads;
+            internal uint th32ParentProcessID;
+            internal int pcPriClassBase;
+            internal uint dwFlags;
+
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+            internal string szExeFile;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern IntPtr CreateToolhelp32Snapshot(
+            uint dwFlags,
+            uint th32ProcessID);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool Process32FirstW(
+            IntPtr hSnapshot,
+            ref ProcessEntry32 lppe);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool Process32NextW(
+            IntPtr hSnapshot,
+            ref ProcessEntry32 lppe);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool CloseHandle(IntPtr hObject);
+    }
 }

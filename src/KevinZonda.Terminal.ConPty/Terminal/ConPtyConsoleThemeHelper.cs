@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Interop;
 
-namespace KevinZonda.Terminal.Terminal;
+namespace KevinZonda.Terminal.ConPty;
 
-internal static class ConsoleThemeHelper
+internal static class ConPtyConsoleThemeHelper
 {
     private const string HelperArgument = "--kterm-console-theme-helper";
 

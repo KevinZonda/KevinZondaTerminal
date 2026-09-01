@@ -3,11 +3,12 @@ using System.Runtime.InteropServices;
 using System.Text;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Interop;
+using KevinZonda.Terminal.Terminal;
 using Microsoft.Win32.SafeHandles;
 
-namespace KevinZonda.Terminal.Terminal;
+namespace KevinZonda.Terminal.ConPty;
 
-internal sealed class TerminalSession : IAsyncDisposable
+internal sealed class ConPtyTerminalSession : ITerminalSession
 {
     private const int BufferSize = 16 * 1024;
     private readonly FileStream _input;
@@ -27,7 +28,7 @@ internal sealed class TerminalSession : IAsyncDisposable
     private int _disposed;
     private int _exitRaised;
 
-    private TerminalSession(
+    private ConPtyTerminalSession(
         string id,
         string shellName,
         uint processId,
@@ -53,19 +54,19 @@ internal sealed class TerminalSession : IAsyncDisposable
         _rows = rows;
     }
 
-    internal string Id { get; }
+    public string Id { get; }
 
-    internal string ShellName { get; }
+    public string ShellName { get; }
 
-    internal uint ProcessId { get; }
+    public uint ProcessId { get; }
 
-    internal IReadOnlyList<uint> GetProcessIds() => _processJob.GetProcessIds();
+    public IReadOnlyList<uint> GetProcessIds() => _processJob.GetProcessIds();
 
-    internal event Action<TerminalSession, string>? OutputReceived;
+    public event Action<ITerminalSession, string>? OutputReceived;
 
-    internal event Action<TerminalSession, TerminalExitStatus>? Exited;
+    public event Action<ITerminalSession, TerminalExitStatus>? Exited;
 
-    internal void StartPumps()
+    public void StartPumps()
     {
         if (_readTask is not null || _waitTask is not null)
         {
@@ -77,7 +78,7 @@ internal sealed class TerminalSession : IAsyncDisposable
         _paletteTask = ApplyConsoleThemeAfterStartup();
     }
 
-    internal static TerminalSession Start(
+    internal static ConPtyTerminalSession Start(
         string id,
         int columns,
         int rows,
@@ -196,7 +197,7 @@ internal sealed class TerminalSession : IAsyncDisposable
             inputStream = new FileStream(hostInput, FileAccess.Write, BufferSize, isAsync: false);
             outputStream = new FileStream(hostOutput, FileAccess.Read, BufferSize, isAsync: false);
 
-            return new TerminalSession(
+            return new ConPtyTerminalSession(
                 id,
                 shell.DisplayName,
                 processInformation.dwProcessId,
@@ -251,7 +252,7 @@ internal sealed class TerminalSession : IAsyncDisposable
         {
             if (Volatile.Read(ref _disposed) == 0)
             {
-                await ConsoleThemeHelper.ApplyAfterStartup(
+                await ConPtyConsoleThemeHelper.ApplyAfterStartup(
                     ProcessId,
                     _theme,
                     _lifetime.Token).ConfigureAwait(false);
@@ -296,7 +297,7 @@ internal sealed class TerminalSession : IAsyncDisposable
         return Marshal.StringToHGlobalUni(block);
     }
 
-    internal async Task WriteAsync(string data)
+    public async Task WriteAsync(string data)
     {
         if (Volatile.Read(ref _disposed) != 0 || string.IsNullOrEmpty(data))
         {
@@ -309,7 +310,7 @@ internal sealed class TerminalSession : IAsyncDisposable
         TerminalProtocolTrace.Observe(Id, "renderer->pipe", data);
     }
 
-    internal async Task WriteAsync(ReadOnlyMemory<byte> data)
+    public async Task WriteAsync(ReadOnlyMemory<byte> data)
     {
         if (Volatile.Read(ref _disposed) != 0 || data.IsEmpty)
         {
@@ -331,7 +332,7 @@ internal sealed class TerminalSession : IAsyncDisposable
         }
     }
 
-    internal void Resize(int columns, int rows)
+    public void Resize(int columns, int rows)
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -481,5 +482,3 @@ internal sealed class TerminalSession : IAsyncDisposable
     }
 
 }
-
-internal sealed record TerminalExitStatus(uint ExitCode, string? Failure);

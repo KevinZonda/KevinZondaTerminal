@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using KevinZonda.Terminal.Configuration;
+using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Hosting;
 using KevinZonda.Terminal.Interop;
 using KevinZonda.Terminal.Messaging;
@@ -41,7 +42,10 @@ internal sealed class MainForm : Form
     {
         _startingDirectory = startingDirectory;
         _settings = _settingsStore.Load();
-        _sessions = new TerminalSessionManager(_settings, startingDirectory);
+        _sessions = new TerminalSessionManager(
+            _settings,
+            startingDirectory,
+            ConPtyTerminalSessionFactory.Instance);
         _agentUsage = new AgentUsageStatusService(_sessions, _settings);
         _systemMetrics = new SystemMetricsService();
         Text = "KevinZonda Terminal";

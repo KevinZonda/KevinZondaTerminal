@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KevinZonda.AgentUsageMonitor\KevinZonda.AgentUsageMonitor.csproj" />
-    <ProjectReference Include="..\KevinZonda.Terminal.ConPty\KevinZonda.Terminal.ConPty.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -17,6 +16,9 @@
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>kterm-server</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>KevinZonda.Terminal.ConPty</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 

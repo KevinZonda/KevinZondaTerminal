@@ -5,21 +5,26 @@ namespace KevinZonda.Terminal.Terminal;
 
 internal sealed class TerminalSessionManager : IAsyncDisposable
 {
-    private readonly ConcurrentDictionary<string, TerminalSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, ITerminalSession> _sessions = new();
+    private readonly ITerminalSessionFactory _sessionFactory;
     private readonly object _prewarmLock = new();
     private readonly string _startingDirectory;
     private AppSettings _settings;
-    private Task<TerminalSession>? _prewarmedSession;
+    private Task<ITerminalSession>? _prewarmedSession;
     private int _disposed;
 
     internal event Action<string, string>? OutputReceived;
 
     internal event Action<string, TerminalExitStatus>? SessionExited;
 
-    internal TerminalSessionManager(AppSettings settings, string startingDirectory)
+    internal TerminalSessionManager(
+        AppSettings settings,
+        string startingDirectory,
+        ITerminalSessionFactory sessionFactory)
     {
         _settings = settings;
         _startingDirectory = startingDirectory;
+        _sessionFactory = sessionFactory;
     }
 
     internal void Prewarm(int columns, int rows)
@@ -38,14 +43,14 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
 
             var id = Guid.NewGuid().ToString("N");
             var settings = _settings;
-            _prewarmedSession = Task.Run(() => TerminalSession.Start(
+            _prewarmedSession = _sessionFactory.StartAsync(
                 id,
                 columns,
                 rows,
                 ShellProfileCatalog.Resolve(settings.Shell),
                 TerminalThemeCatalog.Find(settings.Theme.Name),
                 _startingDirectory,
-                settings.ConHost.EnhancedOpenConsole));
+                settings.ConHost.EnhancedOpenConsole).AsTask();
         }
     }
 
@@ -57,14 +62,14 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
         var settings = GetSettings();
         var session = prewarmedSession is not null
             ? await prewarmedSession.ConfigureAwait(false)
-            : await Task.Run(() => TerminalSession.Start(
+            : await _sessionFactory.StartAsync(
                 Guid.NewGuid().ToString("N"),
                 columns,
                 rows,
                 ShellProfileCatalog.Resolve(settings.Shell),
                 TerminalThemeCatalog.Find(settings.Theme.Name),
                 _startingDirectory,
-                settings.ConHost.EnhancedOpenConsole)).ConfigureAwait(false);
+                settings.ConHost.EnhancedOpenConsole).ConfigureAwait(false);
 
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -111,7 +116,7 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-        Task<TerminalSession>? previousPrewarm;
+        Task<ITerminalSession>? previousPrewarm;
         lock (_prewarmLock)
         {
             if (_settings.Shell.HasSameLaunchConfiguration(settings.Shell) &&
@@ -140,7 +145,7 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
         }
     }
 
-    private Task<TerminalSession>? TakePrewarmedSession()
+    private Task<ITerminalSession>? TakePrewarmedSession()
     {
         lock (_prewarmLock)
         {
@@ -175,7 +180,7 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
         }
     }
 
-    private TerminalSession Get(string sessionId)
+    private ITerminalSession Get(string sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
         {
@@ -185,10 +190,10 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
         return session;
     }
 
-    private void HandleOutput(TerminalSession session, string data) =>
+    private void HandleOutput(ITerminalSession session, string data) =>
         OutputReceived?.Invoke(session.Id, data);
 
-    private void HandleExit(TerminalSession session, TerminalExitStatus status) =>
+    private void HandleExit(ITerminalSession session, TerminalExitStatus status) =>
         SessionExited?.Invoke(session.Id, status);
 
     public async ValueTask DisposeAsync()
@@ -217,7 +222,7 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
         await Task.WhenAll(disposalTasks).ConfigureAwait(false);
     }
 
-    private static async Task DisposePrewarmedSession(Task<TerminalSession> sessionTask)
+    private static async Task DisposePrewarmedSession(Task<ITerminalSession> sessionTask)
     {
         try
         {
@@ -226,7 +231,7 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
         }
         catch
         {
-            // TerminalSession.Start releases partially created resources before propagating a failure.
+            // Session factories release partially created resources before propagating a failure.
         }
     }
 }

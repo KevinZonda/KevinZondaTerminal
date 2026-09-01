@@ -1,8 +1,8 @@
 using System.Diagnostics;
+using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Hosting;
 using KevinZonda.Terminal.Interop;
 using KevinZonda.Terminal.RecentWorkspaces;
-using KevinZonda.Terminal.Terminal;
 
 namespace KevinZonda.Terminal;
 
@@ -11,7 +11,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (ConsoleThemeHelper.TryRun(args, out var helperExitCode))
+        if (ConPtyConsoleThemeHelper.TryRun(args, out var helperExitCode))
         {
             return helperExitCode;
         }

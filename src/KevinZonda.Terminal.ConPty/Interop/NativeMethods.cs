@@ -29,7 +29,6 @@ internal static partial class NativeMethods
     internal const uint FileShareRead = 0x0000_0001;
     internal const uint FileShareWrite = 0x0000_0002;
     internal const uint OpenExisting = 3;
-    internal const uint Th32csSnapProcess = 0x0000_0002;
     internal const nuint ProcThreadAttributePseudoConsole = 0x0002_0016;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -143,22 +142,6 @@ internal static partial class NativeMethods
         internal UIntPtr JobMemoryLimit;
         internal UIntPtr PeakProcessMemoryUsed;
         internal UIntPtr PeakJobMemoryUsed;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    internal struct ProcessEntry32
-    {
-        internal uint dwSize;
-        internal uint cntUsage;
-        internal uint th32ProcessID;
-        internal IntPtr th32DefaultHeapID;
-        internal uint th32ModuleID;
-        internal uint cntThreads;
-        internal uint th32ParentProcessID;
-        internal int pcPriClassBase;
-        internal uint dwFlags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        internal string szExeFile;
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -275,17 +258,6 @@ internal static partial class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern uint ResumeThread(IntPtr hThread);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool Process32FirstW(IntPtr hSnapshot, ref ProcessEntry32 lppe);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool Process32NextW(IntPtr hSnapshot, ref ProcessEntry32 lppe);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
