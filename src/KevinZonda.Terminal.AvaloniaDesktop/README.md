@@ -13,6 +13,9 @@
 - macOS/Linux 系统 CPU 与物理内存用量监控。
 - 与 Windows 客户端共享 `~/.kterm/config.json`，更新字体大小时保留未知配置项。
 
+应用级快捷键在 macOS 使用 Command（例如 `⌘T`、`⌘\\`、`⌘-`），Linux
+使用 Alt。macOS 的 Option 不会被这些应用命令截获。
+
 运行：
 
 ```bash

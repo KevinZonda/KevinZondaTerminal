@@ -21,9 +21,9 @@ KevinZonda Terminal 是一个使用 .NET 10 和 xterm.js/WebGL 的 Terminal Emul
 
 | 快捷键 | 操作 |
 | --- | --- |
-| `Alt+T` | 新建 Tab |
-| `Alt+\` | 将聚焦 Pane 拆成左右两列 |
-| `Alt+-` | 将聚焦 Pane 拆成上下两行 |
+| Windows/Linux `Alt+T`；macOS `⌘T` | 新建 Tab |
+| Windows/Linux `Alt+\`；macOS `⌘\` | 将聚焦 Pane 拆成左右两列 |
+| Windows/Linux `Alt+-`；macOS `⌘-` | 将聚焦 Pane 拆成上下两行 |
 | `Ctrl+Shift+C` | 复制终端选择 |
 | `Ctrl+Shift+V` | 粘贴到聚焦终端 |
 

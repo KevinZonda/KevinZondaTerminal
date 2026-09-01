@@ -90,6 +90,8 @@ export class Workspace implements TerminalCallbacks {
   private static readonly PEEK_CLOSE_DELAY = 250;
   private static readonly USAGE_TOOLTIP_OPEN_DELAY = 160;
   private static readonly USAGE_TOOLTIP_CLOSE_DELAY = 180;
+  private static readonly USE_META_APPLICATION_SHORTCUTS =
+    navigator.platform.startsWith('Mac') || navigator.userAgent.includes('Macintosh');
 
   private readonly bridge: NativeBridge;
   private readonly app: HTMLElement;
@@ -163,7 +165,9 @@ export class Workspace implements TerminalCallbacks {
       throw new Error("Application element '#mobile-input-control' must be a button.");
     }
     this.mobileControlButton = mobileControlButton;
-    this.requireElement('new-workspace').addEventListener('click', () => void this.createWorkspace());
+    const newWorkspaceButton = this.requireElement('new-workspace');
+    newWorkspaceButton.title = `New workspace (${this.applicationShortcutLabel('N')})`;
+    newWorkspaceButton.addEventListener('click', () => void this.createWorkspace());
     this.peekRail.addEventListener('pointerenter', () => this.cancelPeekClose());
     this.peekRail.addEventListener('pointerleave', () => this.schedulePeekClose());
     this.peekRail.addEventListener('click', this.handlePeekBackgroundClick);
@@ -678,7 +682,7 @@ export class Workspace implements TerminalCallbacks {
       return;
     }
 
-    if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    if (this.hasApplicationShortcutModifier(event)) {
       let handled = true;
       switch (event.code) {
         case 'KeyT':
@@ -722,6 +726,19 @@ export class Workspace implements TerminalCallbacks {
       }
     }
   };
+
+  private hasApplicationShortcutModifier(event: KeyboardEvent): boolean {
+    if (event.ctrlKey || event.shiftKey) {
+      return false;
+    }
+    return Workspace.USE_META_APPLICATION_SHORTCUTS
+      ? event.metaKey && !event.altKey
+      : event.altKey && !event.metaKey;
+  }
+
+  private applicationShortcutLabel(key: string): string {
+    return Workspace.USE_META_APPLICATION_SHORTCUTS ? `⌘${key}` : `Alt+${key}`;
+  }
 
   private executeCommand(command: string): void {
     switch (command) {
@@ -927,7 +944,7 @@ export class Workspace implements TerminalCallbacks {
     peekAddButton.type = 'button';
     peekAddButton.className = 'workspace-peek-activate';
     peekAddButton.textContent = '+';
-    peekAddButton.title = 'New workspace (Alt+N)';
+    peekAddButton.title = `New workspace (${this.applicationShortcutLabel('N')})`;
     peekAddButton.setAttribute('aria-label', 'New workspace');
     peekAddButton.addEventListener('click', () => void this.createWorkspace());
     peekAdd.append(peekAddButton);
@@ -1581,7 +1598,7 @@ export class Workspace implements TerminalCallbacks {
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'pane-new-tab';
-    add.title = 'New tab in this pane (Alt+T)';
+    add.title = `New tab in this pane (${this.applicationShortcutLabel('T')})`;
     add.setAttribute('aria-label', 'New terminal tab in this pane');
     add.textContent = '+';
     add.addEventListener('click', () => void this.createTab(pane.id));
