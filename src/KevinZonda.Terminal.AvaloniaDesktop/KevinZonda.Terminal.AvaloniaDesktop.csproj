@@ -24,4 +24,10 @@
     <ProjectReference Include="..\KevinZonda.Terminal.UnixPty\KevinZonda.Terminal.UnixPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>KevinZonda.Terminal.AvaloniaDesktop.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

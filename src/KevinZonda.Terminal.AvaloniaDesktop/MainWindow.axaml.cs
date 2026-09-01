@@ -10,9 +10,11 @@ public sealed partial class MainWindow : Window
     private NativeWebView _webView = null!;
     private LocalAssetServer? _assetServer;
     private UnixTerminalSessionManager? _sessions;
+    private SystemMetricsService? _systemMetrics;
     private AvaloniaWebViewBridge? _bridge;
     private bool _initialized;
     private bool _canClose;
+    private bool _cleanupStarted;
 
     public MainWindow()
         : this(Environment.CurrentDirectory)
@@ -46,13 +48,21 @@ public sealed partial class MainWindow : Window
         {
             _assetServer = await LocalAssetServer.StartAsync();
             _sessions = new UnixTerminalSessionManager(_workingDirectory);
-            _bridge = new AvaloniaWebViewBridge(_webView, _sessions, this, _workingDirectory);
+            _systemMetrics = new SystemMetricsService();
+            _systemMetrics.Start();
+            _bridge = new AvaloniaWebViewBridge(
+                _webView,
+                _sessions,
+                _systemMetrics,
+                this,
+                _workingDirectory);
             _webView.Source = _assetServer.StartPage;
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine(exception);
             await ShowStartupErrorAsync(exception);
+            await CleanupAsync();
             _canClose = true;
             Close();
         }
@@ -66,9 +76,24 @@ public sealed partial class MainWindow : Window
         }
 
         eventArgs.Cancel = true;
+        await CleanupAsync();
         _canClose = true;
+        Close();
+    }
 
+    private async Task CleanupAsync()
+    {
+        if (_cleanupStarted)
+        {
+            return;
+        }
+
+        _cleanupStarted = true;
         _bridge?.Dispose();
+        if (_systemMetrics is not null)
+        {
+            await _systemMetrics.DisposeAsync();
+        }
         if (_sessions is not null)
         {
             await _sessions.DisposeAsync();
@@ -77,8 +102,6 @@ public sealed partial class MainWindow : Window
         {
             await _assetServer.DisposeAsync();
         }
-
-        Close();
     }
 
     private async Task ShowStartupErrorAsync(Exception exception)

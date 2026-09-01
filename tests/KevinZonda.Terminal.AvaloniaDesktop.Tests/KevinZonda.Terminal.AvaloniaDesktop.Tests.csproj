@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>KevinZonda.Terminal.AvaloniaDesktop.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KevinZonda.Terminal.AvaloniaDesktop\KevinZonda.Terminal.AvaloniaDesktop.csproj" />
+  </ItemGroup>
+</Project>

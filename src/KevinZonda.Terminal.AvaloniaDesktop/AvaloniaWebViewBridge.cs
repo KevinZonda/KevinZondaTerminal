@@ -16,6 +16,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
 
     private readonly NativeWebView _webView;
     private readonly UnixTerminalSessionManager _sessions;
+    private readonly SystemMetricsService _systemMetrics;
     private readonly MainWindow _owner;
     private readonly string _workingDirectory;
     private readonly DesktopSettingsStore _settingsStore = new();
@@ -27,16 +28,19 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     internal AvaloniaWebViewBridge(
         NativeWebView webView,
         UnixTerminalSessionManager sessions,
+        SystemMetricsService systemMetrics,
         MainWindow owner,
         string workingDirectory)
     {
         _webView = webView;
         _sessions = sessions;
+        _systemMetrics = systemMetrics;
         _owner = owner;
         _workingDirectory = workingDirectory;
         _settings = _settingsStore.Load();
         _sessions.OutputReceived += QueueOutput;
         _sessions.SessionExited += QueueExit;
+        _systemMetrics.StatusChanged += QueueSystemMetrics;
         _webView.WebMessageReceived += HandleMessage;
         _outputTimer = new DispatcherTimer
         {
@@ -66,12 +70,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                         version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.1.0",
                         settings = _settings,
                         agentUsage = new { providers = Array.Empty<object>() },
-                        systemMetrics = new
-                        {
-                            usedMemoryBytes = 0,
-                            availableMemoryBytes = 0,
-                            totalMemoryBytes = 0
-                        }
+                        systemMetrics = _systemMetrics.Current
                     });
                     break;
 
@@ -194,6 +193,14 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                 failure = failure ?? (signal is null ? null : $"Terminated by signal {signal}.")
             });
         });
+    }
+
+    private void QueueSystemMetrics(SystemMetricsStatus status)
+    {
+        if (Volatile.Read(ref _disposed) == 0)
+        {
+            Post("systemMetrics.changed", payload: new { systemMetrics = status });
+        }
     }
 
     private void FlushOutput(object? sender, EventArgs eventArgs)
@@ -329,6 +336,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         _webView.WebMessageReceived -= HandleMessage;
         _sessions.OutputReceived -= QueueOutput;
         _sessions.SessionExited -= QueueExit;
+        _systemMetrics.StatusChanged -= QueueSystemMetrics;
         _outputQueues.Clear();
     }
 }

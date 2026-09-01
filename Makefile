@@ -6,6 +6,7 @@ LAUNCHER_PROJECT := src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.
 AUTH_TEST_PROJECT := tests/KevinZonda.Terminal.Server.UserAuth.Tests/KevinZonda.Terminal.Server.UserAuth.Tests.csproj
 LAUNCHER_TEST_PROJECT := tests/KevinZonda.Terminal.Server.Launcher.Tests/KevinZonda.Terminal.Server.Launcher.Tests.csproj
 UNIX_PTY_TEST_PROJECT := tests/KevinZonda.Terminal.UnixPty.Tests/KevinZonda.Terminal.UnixPty.Tests.csproj
+AVALONIA_TEST_PROJECT := tests/KevinZonda.Terminal.AvaloniaDesktop.Tests/KevinZonda.Terminal.AvaloniaDesktop.Tests.csproj
 WEB_DIR := src/KevinZonda.Terminal.Web
 DASHBOARD_DIR := src/KevinZonda.Terminal.Server.Dashboard
 SMOKE_TEST := scripts/smoke.ps1
@@ -48,7 +49,7 @@ CONFIG ?= Debug
 
 .DEFAULT_GOAL := build
 
-.PHONY: help deps install restore web dashboard build build-avalonia run run-avalonia run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-launcher-cert test-auth test-unix-pty format audit publish publish-desktop publish-avalonia publish-server publish-launcher clean
+.PHONY: help deps install restore web dashboard build build-avalonia run run-avalonia run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-launcher-cert test-auth test-unix-pty test-system-metrics format audit publish publish-desktop publish-avalonia publish-server publish-launcher clean
 
 help:
 	@echo "Available targets:"
@@ -73,6 +74,7 @@ help:
 	@echo "  make test-launcher-cert - run the Server Launcher certificate tests"
 	@echo "  make test-auth - run the server user-auth tests"
 	@echo "  make test-unix-pty - run the macOS/Linux PTY integration tests"
+	@echo "  make test-system-metrics - run the macOS/Linux CPU and memory integration test"
 	@echo "  make format    - verify C# formatting"
 	@echo "  make audit     - audit NuGet and pnpm dependencies"
 	@echo "  make publish   - publish all ReadyToRun single-file win-x64 executables"
@@ -149,6 +151,9 @@ test-auth:
 
 test-unix-pty:
 	dotnet run --project $(UNIX_PTY_TEST_PROJECT) -c $(CONFIG) --no-launch-profile
+
+test-system-metrics:
+	dotnet run --project $(AVALONIA_TEST_PROJECT) -c $(CONFIG) --no-launch-profile
 
 format:
 	dotnet format $(SOLUTION) --verify-no-changes --no-restore
