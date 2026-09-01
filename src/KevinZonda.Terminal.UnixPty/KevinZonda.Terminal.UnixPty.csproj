@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>KevinZonda.Terminal.UnixPty</RootNamespace>
+    <AssemblyName>KevinZonda.Terminal.UnixPty</AssemblyName>
+    <UnixPtyHelperOutput>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/native/kterm-pty-helper</UnixPtyHelperOutput>
+    <UnixPtySupportedHost Condition="$([MSBuild]::IsOSPlatform('OSX')) or $([MSBuild]::IsOSPlatform('Linux'))">true</UnixPtySupportedHost>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UnixPtySupportedHost)' == 'true'">
+    <None Include="$(UnixPtyHelperOutput)"
+          Link="kterm-pty-helper"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="BuildUnixPtyHelper"
+          BeforeTargets="PrepareForBuild"
+          Inputs="$(MSBuildProjectDirectory)/Native/kterm_pty_helper.c"
+          Outputs="$(UnixPtyHelperOutput)"
+          Condition="'$(UnixPtySupportedHost)' == 'true'">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(UnixPtyHelperOutput)'))" />
+    <Exec Condition="$([MSBuild]::IsOSPlatform('OSX'))"
+          Command="clang -std=c11 -O2 -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/Native/kterm_pty_helper.c&quot; -o &quot;$(UnixPtyHelperOutput)&quot;" />
+    <Exec Condition="$([MSBuild]::IsOSPlatform('Linux'))"
+          Command="cc -std=c11 -D_GNU_SOURCE -O2 -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/Native/kterm_pty_helper.c&quot; -lutil -o &quot;$(UnixPtyHelperOutput)&quot;" />
+  </Target>
+</Project>

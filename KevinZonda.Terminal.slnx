@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/KevinZonda.AgentUsageMonitor/KevinZonda.AgentUsageMonitor.csproj" />
+  <Project Path="src/KevinZonda.Terminal.AvaloniaDesktop/KevinZonda.Terminal.AvaloniaDesktop.csproj" />
   <Project Path="src/KevinZonda.Terminal.Core/KevinZonda.Terminal.Core.csproj" />
   <Project Path="src/KevinZonda.Terminal.RecentWorkspaces/KevinZonda.Terminal.RecentWorkspaces.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.Dashboard/KevinZonda.Terminal.Server.Dashboard.csproj" />
@@ -8,8 +9,11 @@
   <Project Path="src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.Server.Launcher.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.Login/KevinZonda.Terminal.Server.Login.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.UserAuth/KevinZonda.Terminal.Server.UserAuth.csproj" />
+  <Project Path="src/KevinZonda.Terminal.UnixPty/KevinZonda.Terminal.UnixPty.csproj" />
   <Project Path="src/KevinZonda.Terminal/KevinZonda.Terminal.csproj" />
   <Project Path="tests/KevinZonda.AgentUsageMonitor.Tests/KevinZonda.AgentUsageMonitor.Tests.csproj" />
+  <Project Path="tests/KevinZonda.Terminal.AvaloniaDesktop.Tests/KevinZonda.Terminal.AvaloniaDesktop.Tests.csproj" />
   <Project Path="tests/KevinZonda.Terminal.Server.Launcher.Tests/KevinZonda.Terminal.Server.Launcher.Tests.csproj" />
   <Project Path="tests/KevinZonda.Terminal.Server.UserAuth.Tests/KevinZonda.Terminal.Server.UserAuth.Tests.csproj" />
+  <Project Path="tests/KevinZonda.Terminal.UnixPty.Tests/KevinZonda.Terminal.UnixPty.Tests.csproj" />
 </Solution>
