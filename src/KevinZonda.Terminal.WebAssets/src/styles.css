@@ -852,7 +852,6 @@ button {
 
 .pane-tab.bell-unviewed {
   border-color: var(--chrome-accent, #88c0d0);
-  box-shadow: inset 0 2px 0 var(--chrome-accent, #88c0d0);
 }
 
 .pane-tab.bell-ringing {
