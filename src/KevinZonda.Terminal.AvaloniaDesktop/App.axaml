@@ -11,6 +11,10 @@
     <NativeMenu>
       <NativeMenuItem Header="About KevinZonda Terminal"
                       Click="HandleAboutClick" />
+      <NativeMenuItemSeparator />
+      <NativeMenuItem Header="Settings…"
+                      Gesture="Meta+OemComma"
+                      Click="HandleSettingsClick" />
     </NativeMenu>
   </NativeMenu.Menu>
 </Application>

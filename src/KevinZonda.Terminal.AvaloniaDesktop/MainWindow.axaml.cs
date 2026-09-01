@@ -57,6 +57,7 @@ public sealed partial class MainWindow : Window
             MacOSWindowShortcut.HideApplication => HideApplication(),
             MacOSWindowShortcut.ToggleFullScreen => ToggleFullScreen(),
             MacOSWindowShortcut.QuitApplication => QuitApplication(),
+            MacOSWindowShortcut.OpenSettings => OpenSettings(),
             _ => false
         };
 
@@ -75,6 +76,7 @@ public sealed partial class MainWindow : Window
             (Key.H, KeyModifiers.Meta) => MacOSWindowShortcut.HideApplication,
             (Key.F, KeyModifiers.Meta | KeyModifiers.Control) => MacOSWindowShortcut.ToggleFullScreen,
             (Key.Q, KeyModifiers.Meta) => MacOSWindowShortcut.QuitApplication,
+            (Key.OemComma, KeyModifiers.Meta) => MacOSWindowShortcut.OpenSettings,
             _ => MacOSWindowShortcut.None
         };
 
@@ -119,6 +121,20 @@ public sealed partial class MainWindow : Window
         Close();
         return true;
     }
+
+    private bool OpenSettings()
+    {
+        if (_bridge is null)
+        {
+            return false;
+        }
+
+        _ = OpenSettingsAsync();
+        return true;
+    }
+
+    internal Task OpenSettingsAsync() =>
+        _bridge?.ShowSettingsAsync() ?? Task.CompletedTask;
 
     private bool ToggleFullScreen()
     {
@@ -302,5 +318,6 @@ internal enum MacOSWindowShortcut
     MinimizeAll,
     HideApplication,
     ToggleFullScreen,
-    QuitApplication
+    QuitApplication,
+    OpenSettings
 }

@@ -30,6 +30,9 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.F, KeyModifiers.Meta | KeyModi
 Require(MainWindow.ResolveMacOSWindowShortcut(Key.Q, KeyModifiers.Meta) ==
         MacOSWindowShortcut.QuitApplication,
     "Command-Q was not recognized as Quit Application.");
+Require(MainWindow.ResolveMacOSWindowShortcut(Key.OemComma, KeyModifiers.Meta) ==
+        MacOSWindowShortcut.OpenSettings,
+    "Command-comma was not recognized as Open Settings.");
 Require(MainWindow.ResolveMacOSWindowShortcut(Key.M, KeyModifiers.Meta | KeyModifiers.Shift) ==
         MacOSWindowShortcut.None,
     "An unsupported shifted shortcut was intercepted.");

@@ -182,7 +182,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         });
     }
 
-    private async Task ShowSettingsAsync()
+    internal async Task ShowSettingsAsync()
     {
         var candidate = await _owner.ShowSettingsAsync(_settings);
         if (candidate is null)

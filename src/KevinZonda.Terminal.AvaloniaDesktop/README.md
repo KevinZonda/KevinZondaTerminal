@@ -10,14 +10,15 @@
 - PTY 输入、输出、二进制输入、resize、退出状态和进程组清理。
 - Avalonia WebView 与现有 WebView2 Bridge 消息协议的适配。
 - 系统剪贴板、外部链接、新窗口和完整 Settings 窗口。
-- macOS 原生应用菜单与 KevinZonda Terminal About 窗口。
+- macOS 原生应用菜单、Settings 和 KevinZonda Terminal About 窗口。
 - macOS/Linux 系统 CPU 与物理内存用量监控。
 - Codex 与 Kimi Code 用量监控；对应 Agent 在终端进程树中运行时自动显示并每 5 分钟刷新。
 - 与 Windows 客户端共享 `~/.kterm/config.json`；保存 Unix 设置时保留 Windows 专用和未知配置项。
 
 应用级快捷键在 macOS 使用 Command（例如 `⌘T`、`⌘\\`、`⌘-`、`⌘W`），Linux
 使用 Alt。`⌘W`/`Alt+W` 关闭聚焦 Pane；仅有一个 Pane 时关闭当前 Tab。macOS
-的 Option 不会被这些应用命令截获。
+的 Option 不会被这些应用命令截获。Settings 可从应用菜单打开；macOS 同时支持
+`⌘,` 和 `⌘S`，Linux 使用 `Alt+S`。
 
 运行：
 

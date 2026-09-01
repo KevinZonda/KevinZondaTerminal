@@ -61,6 +61,17 @@ public sealed class App : Application
         }
     }
 
+    private async void HandleSettingsClick(object? sender, EventArgs eventArgs)
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime
+            {
+                MainWindow: MainWindow mainWindow
+            })
+        {
+            await mainWindow.OpenSettingsAsync();
+        }
+    }
+
     private static string ResolveWorkingDirectory(string[]? args)
     {
         if (args is { Length: > 0 })
