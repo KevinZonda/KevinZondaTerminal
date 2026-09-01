@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>KevinZonda.Terminal</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>KevinZonda.Terminal.Core</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>KevinZonda.Terminal</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.exe')">
+    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.exe">
+      <LogicalName>KevinZonda.Terminal.Binaries/OpenConsole.exe</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.Enhanced.exe')">
+    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.Enhanced.exe">
+      <LogicalName>KevinZonda.Terminal.Binaries/OpenConsole.Enhanced.exe</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

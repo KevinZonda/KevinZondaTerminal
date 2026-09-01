@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KevinZonda.AgentUsageMonitor\KevinZonda.AgentUsageMonitor.csproj" />
+    <ProjectReference Include="..\KevinZonda.Terminal.ConPty\KevinZonda.Terminal.ConPty.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,14 +20,4 @@
     </AssemblyAttribute>
   </ItemGroup>
 
-  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.exe')">
-    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.exe">
-      <LogicalName>KevinZonda.Terminal.Binaries/OpenConsole.exe</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.Enhanced.exe')">
-    <EmbeddedResource Include="$(MSBuildProjectDirectory)\..\..\tools\openconsole\OpenConsole.Enhanced.exe">
-      <LogicalName>KevinZonda.Terminal.Binaries/OpenConsole.Enhanced.exe</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
 </Project>
