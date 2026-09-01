@@ -1,6 +1,7 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
 using KevinZonda.AgentUsageMonitor;
 using Avalonia.Input;
+using System.Text.Json.Nodes;
 
 if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
 {
@@ -35,6 +36,7 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.M, KeyModifiers.Meta | KeyModi
 Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
         MacOSWindowShortcut.None,
     "A non-macOS application shortcut was intercepted.");
+await TestDesktopSettingsStoreAsync();
 
 var detected = UnixAgentProcessDetector.DetectSnapshot(
     """
@@ -84,6 +86,69 @@ Console.WriteLine(
     $"memory {status.UsedMemoryBytes}/{status.TotalMemoryBytes} bytes");
 Console.WriteLine("PASS Unix agent process detection");
 Console.WriteLine("PASS macOS window shortcut mapping");
+Console.WriteLine("PASS Avalonia settings persistence");
+
+static async Task TestDesktopSettingsStoreAsync()
+{
+    var path = Path.Combine(Path.GetTempPath(), $"kterm-settings-{Guid.NewGuid():N}.json");
+    try
+    {
+        await File.WriteAllTextAsync(
+            path,
+            """
+            {
+              "font": { "size": 11 },
+              "shell": {
+                "profile": "Msys2",
+                "executable": "C:\\msys64\\usr\\bin\\zsh.exe",
+                "exitBehavior": "KeepTab"
+              },
+              "conHost": { "enhancedOpenConsole": true },
+              "custom": { "preserve": 42 }
+            }
+            """);
+
+        var store = new DesktopSettingsStore(path);
+        var saved = await store.SaveAsync(new DesktopSettings
+        {
+            Font = new DesktopFontSettings
+            {
+                Family = "Menlo",
+                Size = 16,
+                LineHeight = 1.2,
+                EnableLigatures = true
+            },
+            Theme = new DesktopThemeSettings { Name = "Ubuntu" },
+            Cursor = new DesktopCursorSettings { Shape = "block", Blink = false },
+            Indicators = new DesktopIndicatorSettings
+            {
+                ShowWorkspaceIndicator = false,
+                ShowRemainingUsage = true,
+                AutoRenewKimiToken = true
+            },
+            Shell = new DesktopShellSettings { ExitBehavior = "CloseTab" }
+        });
+
+        Require(saved.Theme.Name == "Ubuntu", "The selected terminal theme was not saved.");
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(path)) as JsonObject
+            ?? throw new InvalidOperationException("The saved settings file is not a JSON object.");
+        Require(root["shell"]?["profile"]?.GetValue<string>() == "Msys2",
+            "Saving Unix settings removed the Windows shell profile.");
+        Require(root["shell"]?["exitBehavior"]?.GetValue<string>() == "CloseTab",
+            "The shell exit behavior was not updated.");
+        Require(root["conHost"]?["enhancedOpenConsole"]?.GetValue<bool>() == true,
+            "Saving Unix settings removed enhanced OpenConsole configuration.");
+        Require(root["custom"]?["preserve"]?.GetValue<int>() == 42,
+            "Saving Unix settings removed an unknown configuration section.");
+    }
+    finally
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+}
 
 static async Task TestLiveAgentUsageAsync()
 {

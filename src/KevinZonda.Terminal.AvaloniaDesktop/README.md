@@ -9,11 +9,11 @@
 - xterm.js Workspace、Tab 和分屏界面。
 - PTY 输入、输出、二进制输入、resize、退出状态和进程组清理。
 - Avalonia WebView 与现有 WebView2 Bridge 消息协议的适配。
-- 系统剪贴板、外部链接、新窗口和字体大小持久化。
+- 系统剪贴板、外部链接、新窗口和完整 Settings 窗口。
 - macOS 原生应用菜单与 KevinZonda Terminal About 窗口。
 - macOS/Linux 系统 CPU 与物理内存用量监控。
 - Codex 与 Kimi Code 用量监控；对应 Agent 在终端进程树中运行时自动显示并每 5 分钟刷新。
-- 与 Windows 客户端共享 `~/.kterm/config.json`，更新字体大小时保留未知配置项。
+- 与 Windows 客户端共享 `~/.kterm/config.json`；保存 Unix 设置时保留 Windows 专用和未知配置项。
 
 应用级快捷键在 macOS 使用 Command（例如 `⌘T`、`⌘\\`、`⌘-`、`⌘W`），Linux
 使用 Alt。`⌘W`/`Alt+W` 关闭聚焦 Pane；仅有一个 Pane 时关闭当前 Tab。macOS
@@ -65,4 +65,6 @@ macOS 使用系统自带的 WKWebView，不需要额外运行时。Linux 的嵌�
 sudo apt install libwpewebkit-2.0-1
 ```
 
-当前原生 Settings 编辑器尚未接入 Avalonia 宿主；终端主链路不依赖该功能。
+Settings 窗口使用 Avalonia 桌面控件，提供字体、主题、光标、状态指标和 Shell
+退出行为配置。MSYS2、OpenConsole 和 Windows Shell 路径等 Windows 专用字段不会显示，
+但保存时会原样保留。

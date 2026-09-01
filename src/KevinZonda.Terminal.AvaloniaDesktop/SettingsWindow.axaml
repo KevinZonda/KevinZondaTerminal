@@ -1,0 +1,144 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="KevinZonda.Terminal.AvaloniaDesktop.SettingsWindow"
+        Title="KevinZonda Terminal Settings"
+        Icon="/Assets/WinFormsDefault.ico"
+        Width="620"
+        Height="560"
+        CanResize="False"
+        CanMinimize="False"
+        CanMaximize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="TextBlock.field-label">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <Style Selector="TextBlock.description">
+      <Setter Property="Foreground" Value="#AAB3C0" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Button.action">
+      <Setter Property="MinWidth" Value="88" />
+      <Setter Property="Padding" Value="14,7" />
+    </Style>
+  </Window.Styles>
+
+  <Grid Margin="20" RowDefinitions="*,Auto">
+    <TabControl x:Name="SettingsTabs" Margin="0,0,0,18">
+      <TabItem Header="Font">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <Grid Margin="18" ColumnDefinitions="*,*"
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                       Classes="field-label" Text="Font family" />
+            <ComboBox x:Name="FontFamilyBox"
+                      Grid.Row="1" Grid.ColumnSpan="2"
+                      IsEditable="True" Margin="0,0,0,16" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0"
+                       Classes="field-label" Text="Font size (px)" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Margin="10,0,0,6"
+                       Classes="field-label" Text="Line height" />
+            <NumericUpDown x:Name="FontSizeBox"
+                           Grid.Row="3" Grid.Column="0"
+                           Minimum="8" Maximum="72" Increment="1"
+                           FormatString="0" Margin="0,0,10,16" />
+            <NumericUpDown x:Name="LineHeightBox"
+                           Grid.Row="3" Grid.Column="1"
+                           Minimum="0.8" Maximum="2" Increment="0.01"
+                           FormatString="0.00" Margin="10,0,0,16" />
+
+            <TextBlock Grid.Row="4" Grid.Column="0"
+                       Classes="field-label" Text="Cursor shape" />
+            <ComboBox x:Name="CursorShapeBox"
+                      Grid.Row="5" Grid.Column="0" Margin="0,0,10,14" />
+            <CheckBox x:Name="CursorBlinkBox"
+                      Grid.Row="5" Grid.Column="1" Margin="10,5,0,14"
+                      Content="Blink cursor" />
+            <CheckBox x:Name="LigaturesBox"
+                      Grid.Row="6" Grid.ColumnSpan="2" Margin="0,0,0,16"
+                      Content="Enable ligatures" />
+
+            <Border x:Name="FontPreviewBorder"
+                    Grid.Row="7" Grid.ColumnSpan="2"
+                    MinHeight="94" Padding="16"
+                    BorderBrush="#3A4351" BorderThickness="1"
+                    CornerRadius="6" Background="#0C0F14">
+              <TextBlock x:Name="FontPreviewText"
+                         VerticalAlignment="Center"
+                         Text="PS ~/code&gt; echo KevinZonda Terminal AaBb 0123" />
+            </Border>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Theme">
+        <Grid Margin="18" RowDefinitions="Auto,Auto,*">
+          <TextBlock Grid.Row="0" Classes="field-label" Text="Color scheme" />
+          <ComboBox x:Name="ThemeBox" Grid.Row="1" Margin="0,0,0,16" />
+          <Border x:Name="ThemePreviewBorder"
+                  Grid.Row="2" Padding="20"
+                  BorderBrush="#3A4351" BorderThickness="1"
+                  CornerRadius="6">
+            <StackPanel VerticalAlignment="Center" Spacing="10">
+              <TextBlock x:Name="ThemePreviewPrompt"
+                         FontFamily="Menlo, monospace"
+                         FontSize="15"
+                         Text="$ printf 'KevinZonda Terminal\n'" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border x:Name="ThemePreviewCursor"
+                        Width="10" Height="20" CornerRadius="1" />
+                <TextBlock x:Name="ThemePreviewOutput"
+                           FontFamily="Menlo, monospace"
+                           FontSize="15"
+                           Text="Ready" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Indicators">
+        <StackPanel Margin="18" Spacing="8">
+          <CheckBox x:Name="WorkspaceIndicatorBox"
+                    Content="Show workspace indicator" />
+          <TextBlock Classes="description" Margin="24,0,0,10"
+                     Text="Display workspace shortcuts in the center of the status bar." />
+
+          <CheckBox x:Name="RemainingUsageBox"
+                    Content="Show remaining quota instead of used" />
+          <TextBlock Classes="description" Margin="24,0,0,10"
+                     Text="Display remaining percentages for Codex and Kimi usage limits." />
+
+          <CheckBox x:Name="AutoRenewKimiBox"
+                    Content="Auto renew Kimi token" />
+          <TextBlock Classes="description" Margin="24,0,0,0"
+                     Text="Refresh the Kimi CLI OAuth token in memory only. Credential files are never modified." />
+        </StackPanel>
+      </TabItem>
+
+      <TabItem Header="Shell">
+        <StackPanel Margin="18" Spacing="8">
+          <TextBlock Classes="field-label" Text="When the shell exits" />
+          <ComboBox x:Name="ShellExitBehaviorBox" Margin="0,0,0,8" />
+          <TextBlock Classes="description"
+                     Text="Applies to new and existing terminal tabs. The Unix shell itself is selected from the user's login shell, with zsh or bash as fallback." />
+        </StackPanel>
+      </TabItem>
+    </TabControl>
+
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
+      <Button Grid.Column="0" Classes="action"
+              Content="Restore defaults" Click="HandleRestoreDefaults" />
+      <Button Grid.Column="2" Classes="action"
+              Content="Cancel" IsCancel="True"
+              Margin="0,0,10,0" Click="HandleCancel" />
+      <Button Grid.Column="3" Classes="action"
+              Content="Save" IsDefault="True"
+              Click="HandleSave" />
+    </Grid>
+  </Grid>
+</Window>

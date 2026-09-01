@@ -16,6 +16,7 @@ public sealed partial class MainWindow : Window
     private AgentUsageStatusService? _agentUsage;
     private SystemMetricsService? _systemMetrics;
     private AvaloniaWebViewBridge? _bridge;
+    private SettingsWindow? _settingsWindow;
     private WindowState? _windowStateBeforeFullScreen;
     private bool _initialized;
     private bool _canClose;
@@ -230,22 +231,66 @@ public sealed partial class MainWindow : Window
         await dialog.ShowDialog(this);
     }
 
-    internal async Task ShowSettingsPlaceholderAsync()
+    internal async Task<DesktopSettings?> ShowSettingsAsync(DesktopSettings settings)
+    {
+        if (_settingsWindow is { IsVisible: true } existing)
+        {
+            existing.Activate();
+            return null;
+        }
+
+        var dialog = new SettingsWindow(settings);
+        _settingsWindow = dialog;
+        try
+        {
+            return await dialog.ShowDialog<DesktopSettings?>(this);
+        }
+        finally
+        {
+            if (ReferenceEquals(_settingsWindow, dialog))
+            {
+                _settingsWindow = null;
+            }
+        }
+    }
+
+    internal async Task ShowSettingsSaveErrorAsync(Exception exception)
     {
         var dialog = new Window
         {
-            Title = "KevinZonda Terminal Settings",
-            Width = 480,
-            Height = 180,
+            Title = "KevinZonda Terminal settings",
+            Width = 560,
+            Height = 220,
             CanResize = false,
-            Content = new TextBlock
+            CanMinimize = false,
+            CanMaximize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var close = new Button
+        {
+            Content = "OK",
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            MinWidth = 88,
+            IsDefault = true,
+            IsCancel = true
+        };
+        close.Click += (_, _) => dialog.Close();
+        dialog.Content = new Grid
+        {
+            Margin = new Avalonia.Thickness(24),
+            RowDefinitions = new RowDefinitions("*,Auto"),
+            Children =
             {
-                Margin = new Avalonia.Thickness(24),
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                Text = "The Avalonia terminal already shares ~/.kterm/config.json. " +
-                       "The native settings editor will be added after the terminal workflow is stable."
+                new TextBlock
+                {
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                    Text = $"KevinZonda Terminal could not save settings.\n\n{exception.Message}"
+                },
+                close
             }
         };
+        Grid.SetRow(close, 1);
         await dialog.ShowDialog(this);
     }
 }

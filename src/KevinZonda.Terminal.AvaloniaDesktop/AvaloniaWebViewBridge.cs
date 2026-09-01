@@ -125,7 +125,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     break;
 
                 case "window.settings":
-                    await _owner.ShowSettingsPlaceholderAsync();
+                    await ShowSettingsAsync();
                     break;
 
                 case "window.newInstance":
@@ -180,6 +180,28 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
             shellName = session.ShellName,
             processId = session.ProcessId
         });
+    }
+
+    private async Task ShowSettingsAsync()
+    {
+        var candidate = await _owner.ShowSettingsAsync(_settings);
+        if (candidate is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _settings = await _settingsStore.SaveAsync(candidate);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await _owner.ShowSettingsSaveErrorAsync(exception);
+            return;
+        }
+
+        _agentUsage.UpdateSettings(_settings);
+        Post("app.settingsChanged", payload: new { settings = _settings });
     }
 
     private void QueueOutput(string sessionId, string data)

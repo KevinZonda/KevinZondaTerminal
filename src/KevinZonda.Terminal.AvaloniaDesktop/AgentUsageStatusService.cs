@@ -50,6 +50,12 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         _monitorTask ??= Task.Run(MonitorAsync);
     }
 
+    internal void UpdateSettings(DesktopSettings settings)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _clients = CreateClients(DesktopSettings.Normalize(settings));
+    }
+
     internal bool RequestRefresh(UsageProvider provider)
     {
         if (Volatile.Read(ref _disposed) != 0 || !_clients.TryGetValue(provider, out var client))
