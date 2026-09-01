@@ -174,7 +174,7 @@ button {
 
 .workspace-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) 20px 28px;
   min-width: 0;
   height: 34px;
   margin-bottom: 3px;
@@ -192,7 +192,30 @@ button {
   background: var(--chrome-active, #29313d);
 }
 
+.workspace-item-bell {
+  display: grid;
+  width: 15px;
+  height: 100%;
+  place-self: center;
+  place-items: center;
+  color: #f2c94c;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workspace-item.has-bell .workspace-item-bell {
+  opacity: 1;
+}
+
+.workspace-item-bell svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
 .workspace-peek-item {
+  position: relative;
   flex: 0 0 24px;
   width: 24px;
   height: 24px;
@@ -214,6 +237,28 @@ button {
   border-color: #81a1c1;
   background: var(--chrome-accent, #5e81ac);
   box-shadow: 0 0 0 1px #5e81ac66;
+}
+
+.workspace-peek-item::after {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  content: '';
+  background: #f2c94c;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workspace-peek-item.has-bell::after {
+  opacity: 1;
+}
+
+.workspace-peek-item.bell-unviewed {
+  border-color: #f2c94c;
+  box-shadow: inset 0 0 0 1px #f2c94c;
 }
 
 .workspace-peek-activate {
@@ -461,8 +506,29 @@ button {
   border-color: var(--chrome-text-bright, #eef2f6);
 }
 
+.workspace-indicator-item.has-bell::before {
+  background: #f2c94c;
+  border-color: #f2c94c;
+}
+
 .workspace-indicator-item:focus-visible::before {
   box-shadow: 0 0 0 1px var(--chrome-text-dim, #aab3c0);
+}
+
+.workspace-item.bell-ringing .workspace-item-bell,
+.workspace-peek-item.bell-ringing::after,
+.workspace-indicator-item.bell-ringing::before {
+  animation: workspace-bell-flash 1.2s ease-in-out;
+}
+
+@keyframes workspace-bell-flash {
+  0%, 32%, 65%, 100% {
+    filter: brightness(1);
+  }
+
+  16%, 49%, 82% {
+    filter: brightness(2.25);
+  }
 }
 
 .system-metric {
@@ -928,8 +994,14 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pane-tab.bell-ringing {
+  .pane-tab.bell-ringing,
+  .workspace-item.bell-ringing .workspace-item-bell,
+  .workspace-peek-item.bell-ringing::after,
+  .workspace-indicator-item.bell-ringing::before {
     animation: none;
+  }
+
+  .pane-tab.bell-ringing {
     border-color: var(--chrome-accent, #88c0d0);
   }
 }

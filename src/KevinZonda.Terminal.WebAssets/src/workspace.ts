@@ -543,9 +543,9 @@ export class Workspace implements TerminalCallbacks {
     this.bellFlashTimers.set(sessionId, window.setTimeout(() => {
       this.bellFlashTimers.delete(sessionId);
       this.ringingBellSessionIds.delete(sessionId);
-      this.refreshBellTab(sessionId);
+      this.refreshBellFeedback(sessionId);
     }, Workspace.BELL_FLASH_DURATION_MS));
-    this.refreshBellTab(sessionId);
+    this.refreshBellFeedback(sessionId, true);
   }
 
   private isSessionViewed(sessionId: string): boolean {
@@ -565,7 +565,7 @@ export class Workspace implements TerminalCallbacks {
       return;
     }
     this.unviewedBellSessionIds.delete(sessionId);
-    this.refreshBellTab(sessionId);
+    this.refreshBellFeedback(sessionId);
   }
 
   private clearAllBellVisualFeedback(): void {
@@ -574,13 +574,81 @@ export class Workspace implements TerminalCallbacks {
     this.ringingBellSessionIds.clear();
     this.unviewedBellSessionIds.clear();
     this.activeWorkspace?.panes.forEach(pane => this.refreshPaneTabs(pane));
+    this.workspaces.forEach(workspace => this.refreshBellWorkspace(workspace.id));
   }
 
-  private refreshBellTab(sessionId: string): void {
+  private refreshBellFeedback(sessionId: string, restartWorkspaceAnimation = false): void {
     const match = this.findWorkspacePaneBySession(sessionId);
-    if (match && match.workspace.id === this.activeWorkspaceId) {
+    if (!match) {
+      return;
+    }
+    if (match.workspace.id === this.activeWorkspaceId) {
       this.refreshPaneTabs(match.pane);
     }
+    this.refreshBellWorkspace(match.workspace.id, restartWorkspaceAnimation);
+  }
+
+  private workspaceBellState(workspace: WorkspaceState): { ringing: boolean; unviewed: boolean } {
+    let ringing = false;
+    let unviewed = false;
+    for (const pane of workspace.panes.values()) {
+      for (const tab of pane.tabs) {
+        ringing ||= this.ringingBellSessionIds.has(tab.sessionId);
+        unviewed ||= this.unviewedBellSessionIds.has(tab.sessionId);
+        if (ringing && unviewed) {
+          return { ringing, unviewed };
+        }
+      }
+    }
+    return { ringing, unviewed };
+  }
+
+  private applyWorkspaceBellState(
+    element: HTMLElement,
+    workspace: WorkspaceState,
+    state: { ringing: boolean; unviewed: boolean },
+    restartAnimation = false
+  ): void {
+    const hasBell = state.ringing || state.unviewed;
+    element.classList.toggle('has-bell', hasBell);
+    element.classList.toggle('bell-unviewed', state.unviewed);
+    if (restartAnimation && state.ringing) {
+      element.classList.remove('bell-ringing');
+      void element.offsetWidth;
+    }
+    element.classList.toggle('bell-ringing', state.ringing);
+
+    const activate = element.querySelector<HTMLElement>(
+      '.workspace-activate, .workspace-peek-activate'
+    );
+    const label = hasBell ? `${workspace.name}, bell rang` : workspace.name;
+    if (activate) {
+      activate.title = label;
+      activate.setAttribute('aria-label', label);
+    } else if (element.classList.contains('workspace-indicator-item')) {
+      element.title = label;
+      element.setAttribute('aria-label', label);
+    }
+  }
+
+  private refreshBellWorkspace(workspaceId: string, restartAnimation = false): void {
+    const workspace = this.workspaces.find(candidate => candidate.id === workspaceId);
+    if (!workspace) {
+      return;
+    }
+    const state = this.workspaceBellState(workspace);
+    const elements = [
+      ...this.workspaceList.querySelectorAll<HTMLElement>('.workspace-item[data-workspace-id]'),
+      ...this.peekList.querySelectorAll<HTMLElement>('.workspace-peek-item[data-workspace-id]'),
+      ...this.workspaceIndicator.querySelectorAll<HTMLElement>(
+        '.workspace-indicator-item[data-workspace-id]'
+      )
+    ];
+    elements.forEach(element => {
+      if (element.dataset.workspaceId === workspaceId) {
+        this.applyWorkspaceBellState(element, workspace, state, restartAnimation);
+      }
+    });
   }
 
   public onControlModifierChanged(sessionId: string, _active: boolean): void {
@@ -972,6 +1040,7 @@ export class Workspace implements TerminalCallbacks {
     const peekFragment = document.createDocumentFragment();
     const indicatorFragment = document.createDocumentFragment();
     for (const workspace of this.workspaces) {
+      const bellState = this.workspaceBellState(workspace);
       const item = document.createElement('div');
       item.className = 'workspace-item';
       item.dataset.workspaceId = workspace.id;
@@ -994,6 +1063,12 @@ export class Workspace implements TerminalCallbacks {
         item.append(activate);
       }
 
+      const bell = document.createElement('span');
+      bell.className = 'workspace-item-bell';
+      bell.setAttribute('aria-hidden', 'true');
+      bell.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2m6-6v-5c0-3.1-1.6-5.6-4.5-6.3V4a1.5 1.5 0 0 0-3 0v.7C7.6 5.4 6 7.9 6 11v5l-2 2v1h16v-1z"/></svg>';
+      item.append(bell);
+
       const close = document.createElement('button');
       close.type = 'button';
       close.className = 'workspace-close';
@@ -1005,6 +1080,7 @@ export class Workspace implements TerminalCallbacks {
         this.closeWorkspace(workspace.id);
       });
       item.append(close);
+      this.applyWorkspaceBellState(item, workspace, bellState);
       sidebarFragment.append(item);
 
       const peekItem = document.createElement('div');
@@ -1018,6 +1094,7 @@ export class Workspace implements TerminalCallbacks {
       peekActivate.setAttribute('aria-label', workspace.name);
       peekActivate.addEventListener('click', () => this.activateWorkspace(workspace.id));
       peekItem.append(peekActivate);
+      this.applyWorkspaceBellState(peekItem, workspace, bellState);
       peekFragment.append(peekItem);
 
       const indicator = document.createElement('button');
@@ -1031,6 +1108,7 @@ export class Workspace implements TerminalCallbacks {
         indicator.setAttribute('aria-current', 'page');
       }
       indicator.addEventListener('click', () => this.activateWorkspace(workspace.id));
+      this.applyWorkspaceBellState(indicator, workspace, bellState);
       indicatorFragment.append(indicator);
     }
     const peekAdd = document.createElement('div');
@@ -1980,6 +2058,7 @@ export class Workspace implements TerminalCallbacks {
       const wasActive = pane.activeSessionId === sessionId;
       pane.tabs.splice(index, 1);
       this.destroyTerminal(sessionId);
+      this.refreshBellWorkspace(workspace.id);
       this.bridge.closeSession(sessionId);
 
       if (pane.tabs.length > 0) {
