@@ -767,7 +767,7 @@ export class Workspace implements TerminalCallbacks {
         break;
     }
   }
-...
+
   private async createWorkspaceCore(activate = false): Promise<void> {
     this.setStatus('Starting workspace…');
     const session = await this.bridge.createSession();
