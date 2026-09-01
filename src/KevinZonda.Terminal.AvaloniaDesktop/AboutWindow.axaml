@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="KevinZonda.Terminal.AvaloniaDesktop.AboutWindow"
         Title="About KevinZonda Terminal"
+        Icon="/Assets/WinFormsDefault.ico"
         Width="520"
         SizeToContent="Height"
         CanResize="False"
@@ -21,23 +22,13 @@
   <Grid Margin="28,24,28,22"
         RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
         RowSpacing="10">
-    <Border Grid.Row="0"
-            Width="64"
-            Height="64"
-            HorizontalAlignment="Center"
-            Margin="0,0,0,4"
-            CornerRadius="14"
-            Background="#252C37"
-            BorderBrush="#88C0D0"
-            BorderThickness="1">
-      <TextBlock Text=">_"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 Foreground="#88C0D0"
-                 FontFamily="Menlo, Cascadia Mono, monospace"
-                 FontSize="23"
-                 FontWeight="SemiBold" />
-    </Border>
+    <Image Grid.Row="0"
+           Width="64"
+           Height="64"
+           HorizontalAlignment="Center"
+           Margin="0,0,0,4"
+           Source="/Assets/WinFormsDefault.ico"
+           Stretch="Uniform" />
 
     <StackPanel Grid.Row="1" Spacing="3">
       <TextBlock Text="KevinZonda Terminal"

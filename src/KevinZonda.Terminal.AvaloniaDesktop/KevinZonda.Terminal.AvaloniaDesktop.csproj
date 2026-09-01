@@ -9,6 +9,7 @@
     <AssemblyTitle>KevinZonda Terminal</AssemblyTitle>
     <Product>KevinZonda Terminal</Product>
     <Version>0.1.0</Version>
+    <ApplicationIcon>..\KevinZonda.Terminal\Assets\WinFormsDefault.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
@@ -24,6 +25,11 @@
     <ProjectReference Include="..\KevinZonda.AgentUsageMonitor\KevinZonda.AgentUsageMonitor.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.UnixPty\KevinZonda.Terminal.UnixPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="..\KevinZonda.Terminal\Assets\WinFormsDefault.ico"
+                     Link="Assets\WinFormsDefault.ico" />
   </ItemGroup>
 
   <ItemGroup>
