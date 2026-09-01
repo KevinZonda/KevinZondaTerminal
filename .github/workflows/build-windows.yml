@@ -71,7 +71,7 @@ jobs:
 
       - name: Publish desktop executable
         run: >-
-          dotnet publish src/KevinZonda.Terminal/KevinZonda.Terminal.csproj
+          dotnet publish src/KevinZonda.Terminal.WinFormsDesktop/KevinZonda.Terminal.WinFormsDesktop.csproj
           --configuration Release
           --runtime win-x64
           --self-contained false
