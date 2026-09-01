@@ -46,6 +46,7 @@ endif
 AVALONIA_SELF_CONTAINED ?= false
 MACOS_BUNDLE_ID ?= com.kevinzonda.terminal
 MACOS_SIGN_IDENTITY ?= -
+MACOS_PUBLISH_TRIMMED ?= true
 
 CONFIG ?= Debug
 
@@ -175,7 +176,7 @@ publish-avalonia:
 	dotnet publish $(AVALONIA_PROJECT) -c Release -r $(AVALONIA_RID) --self-contained $(AVALONIA_SELF_CONTAINED) --nologo
 
 app-avalonia:
-	MACOS_BUNDLE_ID="$(MACOS_BUNDLE_ID)" MACOS_SIGN_IDENTITY="$(MACOS_SIGN_IDENTITY)" scripts/package-macos.sh "$(AVALONIA_RID)"
+	MACOS_BUNDLE_ID="$(MACOS_BUNDLE_ID)" MACOS_SIGN_IDENTITY="$(MACOS_SIGN_IDENTITY)" MACOS_PUBLISH_TRIMMED="$(MACOS_PUBLISH_TRIMMED)" scripts/package-macos.sh "$(AVALONIA_RID)"
 
 publish-server:
 	dotnet publish $(SERVER_PROJECT) -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true --nologo

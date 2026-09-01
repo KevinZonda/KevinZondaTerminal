@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace KevinZonda.AgentUsageMonitor.Codex;
 
@@ -110,13 +111,13 @@ public sealed class CodexUsageClient : IUsageClient
         using var request = new HttpRequestMessage(HttpMethod.Post, RefreshUri)
         {
             Content = new StringContent(
-                JsonSerializer.Serialize(new
+                new JsonObject
                 {
-                    client_id = OAuthClientId,
-                    grant_type = "refresh_token",
-                    refresh_token = credential.RefreshToken,
-                    scope = "openid profile email",
-                }),
+                    ["client_id"] = OAuthClientId,
+                    ["grant_type"] = "refresh_token",
+                    ["refresh_token"] = credential.RefreshToken,
+                    ["scope"] = "openid profile email"
+                }.ToJsonString(),
                 Encoding.UTF8,
                 "application/json"),
         };

@@ -126,7 +126,7 @@ internal sealed record DesktopShellSettings
 
 internal sealed class DesktopSettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions WriteOptions = new(JsonSerializerDefaults.Web)
     {
         AllowTrailingCommas = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
@@ -148,9 +148,9 @@ internal sealed class DesktopSettingsStore
         try
         {
             return File.Exists(_path)
-                ? DesktopSettings.Normalize(JsonSerializer.Deserialize<DesktopSettings>(
+                ? DesktopSettings.Normalize(JsonSerializer.Deserialize(
                     File.ReadAllText(_path, Encoding.UTF8),
-                    JsonOptions))
+                    DesktopSettingsJsonContext.Default.DesktopSettings))
                 : DesktopSettings.Normalize(null);
         }
         catch (Exception exception) when (
@@ -230,7 +230,7 @@ internal sealed class DesktopSettingsStore
         {
             await File.WriteAllTextAsync(
                 temporaryPath,
-                root.ToJsonString(JsonOptions) + Environment.NewLine,
+                root.ToJsonString(WriteOptions) + Environment.NewLine,
                 new UTF8Encoding(false),
                 cancellationToken).ConfigureAwait(false);
             File.Move(temporaryPath, _path, overwrite: true);

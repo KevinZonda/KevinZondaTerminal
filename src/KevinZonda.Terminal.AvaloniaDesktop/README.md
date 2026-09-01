@@ -40,6 +40,13 @@ Developer ID Application 证书名称；签名凭据不会写入仓库：
 make app-avalonia MACOS_SIGN_IDENTITY="Developer ID Application: Example (TEAMID)"
 ```
 
+macOS 自包含产物默认使用 .NET partial trimming，移除未使用的运行库和非 macOS Avalonia
+后端。排查第三方库裁切兼容问题时，可临时生成未裁切产物：
+
+```bash
+make app-avalonia MACOS_PUBLISH_TRIMMED=false
+```
+
 该命令目前生成并签名 `.app`，不执行 Apple notarization；对外分发前仍需使用 `notarytool`
 提交公证并 staple 公证票据。
 

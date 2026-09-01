@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace KevinZonda.AgentUsageMonitor.Codex;
 
@@ -69,10 +70,23 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
         {
             await client.RequestAsync(
                 "initialize",
-                new { clientInfo = new { name = "kevinzonda-agent-usage-monitor", version = "1.0.0" } },
+                new JsonObject
+                {
+                    ["clientInfo"] = new JsonObject
+                    {
+                        ["name"] = "kevinzonda-agent-usage-monitor",
+                        ["version"] = "1.0.0"
+                    }
+                },
                 options.RpcInitializeTimeout,
                 cancellationToken);
-            await client.SendAsync(new { method = "initialized", @params = new { } }, cancellationToken);
+            await client.SendAsync(
+                new JsonObject
+                {
+                    ["method"] = "initialized",
+                    ["params"] = new JsonObject()
+                },
+                cancellationToken);
             return client;
         }
         catch
@@ -168,13 +182,13 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
     }
 
     public Task<JsonElement> ReadRateLimitsAsync(CancellationToken cancellationToken) =>
-        RequestAsync("account/rateLimits/read", new { }, _requestTimeout, cancellationToken);
+        RequestAsync("account/rateLimits/read", new JsonObject(), _requestTimeout, cancellationToken);
 
     public async Task<JsonElement?> ReadAccountAsync(CancellationToken cancellationToken)
     {
         try
         {
-            return await RequestAsync("account/read", new { }, _requestTimeout, cancellationToken);
+            return await RequestAsync("account/read", new JsonObject(), _requestTimeout, cancellationToken);
         }
         catch (UsageException)
         {
@@ -184,12 +198,19 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
 
     private async Task<JsonElement> RequestAsync(
         string method,
-        object parameters,
+        JsonObject parameters,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         var id = Interlocked.Increment(ref _nextId);
-        await SendAsync(new { id, method, @params = parameters }, cancellationToken);
+        await SendAsync(
+            new JsonObject
+            {
+                ["id"] = id,
+                ["method"] = method,
+                ["params"] = parameters
+            },
+            cancellationToken);
         using var timeoutSource = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
         try
@@ -236,9 +257,9 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
         }
     }
 
-    private async Task SendAsync(object payload, CancellationToken cancellationToken)
+    private async Task SendAsync(JsonObject payload, CancellationToken cancellationToken)
     {
-        var json = JsonSerializer.Serialize(payload);
+        var json = payload.ToJsonString();
         await _process.StandardInput.WriteLineAsync(json.AsMemory(), cancellationToken);
         await _process.StandardInput.FlushAsync(cancellationToken);
     }

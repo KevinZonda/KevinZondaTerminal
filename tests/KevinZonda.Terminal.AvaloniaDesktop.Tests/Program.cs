@@ -1,6 +1,7 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
 using KevinZonda.AgentUsageMonitor;
 using Avalonia.Input;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
@@ -40,6 +41,7 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
         MacOSWindowShortcut.None,
     "A non-macOS application shortcut was intercepted.");
 await TestDesktopSettingsStoreAsync();
+TestSourceGeneratedBridgeJson();
 
 var detected = UnixAgentProcessDetector.DetectSnapshot(
     """
@@ -90,6 +92,46 @@ Console.WriteLine(
 Console.WriteLine("PASS Unix agent process detection");
 Console.WriteLine("PASS macOS window shortcut mapping");
 Console.WriteLine("PASS Avalonia settings persistence");
+Console.WriteLine("PASS source-generated Avalonia bridge JSON");
+
+static void TestSourceGeneratedBridgeJson()
+{
+    var inbound = BridgeJson.Deserialize(
+        """
+        {"version":1,"type":"session.resize","requestId":"req-1","sessionId":"pty-1","payload":{"cols":120}}
+        """) ?? throw new InvalidOperationException("The bridge message was not deserialized.");
+    Require(inbound is
+    {
+        Version: 1,
+        Type: "session.resize",
+        RequestId: "req-1",
+        SessionId: "pty-1"
+    }, "The source-generated bridge deserializer changed the inbound protocol.");
+    Require(inbound.Payload.GetProperty("cols").GetInt32() == 120,
+        "The source-generated bridge deserializer lost the payload.");
+
+    var outbound = BridgeJson.Serialize(
+        "session.created",
+        "req-2",
+        "pty-2",
+        new BridgePayload { ShellName = "zsh", ProcessId = 42 });
+    using var document = JsonDocument.Parse(outbound);
+    var root = document.RootElement;
+    Require(root.GetProperty("version").GetInt32() == 1,
+        "The source-generated bridge serializer lost the protocol version.");
+    Require(root.GetProperty("type").GetString() == "session.created",
+        "The source-generated bridge serializer changed the event type.");
+    var payload = root.GetProperty("payload");
+    Require(payload.GetProperty("shellName").GetString() == "zsh"
+            && payload.GetProperty("processId").GetInt32() == 42,
+        "The source-generated bridge serializer changed the payload shape.");
+    Require(!payload.TryGetProperty("settings", out _),
+        "The bridge serializer emitted unrelated nullable payload fields.");
+
+    var quoted = BridgeJson.QuoteForJavaScript(outbound);
+    Require(JsonSerializer.Deserialize(quoted, BridgeJsonContext.Default.String) == outbound,
+        "The bridge JSON was not safely quoted for JavaScript.");
+}
 
 static async Task TestDesktopSettingsStoreAsync()
 {

@@ -14,6 +14,7 @@ bundle_id="${MACOS_BUNDLE_ID:-com.kevinzonda.terminal}"
 executable_name="kterm"
 configuration="${CONFIGURATION:-Release}"
 sign_identity="${MACOS_SIGN_IDENTITY:--}"
+publish_trimmed="${MACOS_PUBLISH_TRIMMED:-true}"
 
 if [[ -z "$app_name" || "$app_name" == */* || "$app_name" == "." || "$app_name" == ".." ]]; then
   echo "MACOS_APP_NAME must be a non-empty file name without path separators." >&2
@@ -22,6 +23,11 @@ fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "macOS app bundles must be packaged on macOS." >&2
+  exit 1
+fi
+
+if [[ "$publish_trimmed" != "true" && "$publish_trimmed" != "false" ]]; then
+  echo "MACOS_PUBLISH_TRIMMED must be true or false." >&2
   exit 1
 fi
 
@@ -73,12 +79,18 @@ echo "Publishing $rid self-contained app..."
 if [[ -e "$publish_dir" ]]; then
   rm -rf -- "$publish_dir"
 fi
-dotnet publish "$project" \
-  -c "$configuration" \
-  -r "$rid" \
-  --self-contained true \
-  --nologo \
+publish_args=(
+  -c "$configuration"
+  -r "$rid"
+  --self-contained true
+  --nologo
   -o "$publish_dir"
+)
+if [[ "$publish_trimmed" == "true" ]]; then
+  publish_args+=(-p:PublishTrimmed=true -p:TrimMode=partial)
+fi
+dotnet publish "$project" \
+  "${publish_args[@]}"
 
 if [[ ! -x "$publish_dir/$executable_name" ]]; then
   echo "Published executable not found: $publish_dir/$executable_name" >&2
@@ -141,3 +153,4 @@ if [[ "$sign_identity" == "-" ]]; then
 else
   echo "Signing: $sign_identity"
 fi
+echo "Trimmed: $publish_trimmed"
