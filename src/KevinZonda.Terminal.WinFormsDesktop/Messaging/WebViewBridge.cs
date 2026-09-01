@@ -24,6 +24,7 @@ internal sealed class WebViewBridge : IDisposable
     private readonly ISystemMetricsService _systemMetrics;
     private readonly Action _openSettings;
     private readonly Action _openNewInstance;
+    private readonly Action _quitApplication;
     private readonly Action<string> _openExternal;
     private readonly Func<double, Task<AppSettings>> _saveFontSize;
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _outputQueues = new();
@@ -38,6 +39,7 @@ internal sealed class WebViewBridge : IDisposable
         ISystemMetricsService systemMetrics,
         Action openSettings,
         Action openNewInstance,
+        Action quitApplication,
         Action<string> openExternal,
         Func<double, Task<AppSettings>> saveFontSize,
         AppSettings settings)
@@ -48,6 +50,7 @@ internal sealed class WebViewBridge : IDisposable
         _systemMetrics = systemMetrics;
         _openSettings = openSettings;
         _openNewInstance = openNewInstance;
+        _quitApplication = quitApplication;
         _openExternal = openExternal;
         _saveFontSize = saveFontSize;
         _settings = settings;
@@ -150,6 +153,10 @@ internal sealed class WebViewBridge : IDisposable
 
                 case BridgeMessageTypes.WindowOpenExternal:
                     _openExternal(GetString(message.Payload, "uri"));
+                    break;
+
+                case BridgeMessageTypes.WindowQuit:
+                    _webView.BeginInvoke(_quitApplication);
                     break;
 
                 case BridgeMessageTypes.SettingsFontSize:

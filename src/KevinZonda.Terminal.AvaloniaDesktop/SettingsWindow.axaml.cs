@@ -26,6 +26,8 @@ internal sealed partial class SettingsWindow : Window
     private readonly CheckBox _workspaceIndicator;
     private readonly CheckBox _remainingUsage;
     private readonly CheckBox _autoRenewKimi;
+    private readonly ComboBox _lastTabClosedBehavior;
+    private readonly ComboBox _lastWorkspaceClosedBehavior;
     private readonly ComboBox _shellExitBehavior;
     private AppSettings _basisSettings;
     private bool _applyingValues;
@@ -52,6 +54,8 @@ internal sealed partial class SettingsWindow : Window
         _workspaceIndicator = Find<CheckBox>("WorkspaceIndicatorBox");
         _remainingUsage = Find<CheckBox>("RemainingUsageBox");
         _autoRenewKimi = Find<CheckBox>("AutoRenewKimiBox");
+        _lastTabClosedBehavior = Find<ComboBox>("LastTabClosedBehaviorBox");
+        _lastWorkspaceClosedBehavior = Find<ComboBox>("LastWorkspaceClosedBehaviorBox");
         _shellExitBehavior = Find<ComboBox>("ShellExitBehaviorBox");
 
         _fontFamily.ItemsSource = FontManager.Current.SystemFonts
@@ -60,6 +64,9 @@ internal sealed partial class SettingsWindow : Window
             .ToArray();
         _cursorShape.ItemsSource = new[] { "Block", "Underline", "Bar" };
         _theme.ItemsSource = TerminalThemeCatalog.All.Select(theme => theme.Name).ToArray();
+        _lastTabClosedBehavior.ItemsSource = new[] { "Close the workspace", "Open a new tab" };
+        _lastWorkspaceClosedBehavior.ItemsSource =
+            new[] { "Quit KevinZonda Terminal", "Create a new workspace" };
         _shellExitBehavior.ItemsSource = new[] { "Keep tab open", "Close tab" };
 
         _fontFamily.PropertyChanged += (_, eventArgs) =>
@@ -99,6 +106,15 @@ internal sealed partial class SettingsWindow : Window
             ShowRemainingUsage = _remainingUsage.IsChecked == true,
             AutoRenewKimiToken = _autoRenewKimi.IsChecked == true
         },
+        Workspace = new WorkspaceBehaviorSettings
+        {
+            LastTabClosedBehavior = _lastTabClosedBehavior.SelectedIndex == 0
+                ? WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior
+                : WorkspaceBehaviorSettings.OpenNewTabLastTabBehavior,
+            LastWorkspaceClosedBehavior = _lastWorkspaceClosedBehavior.SelectedIndex == 0
+                ? WorkspaceBehaviorSettings.QuitApplicationLastWorkspaceBehavior
+                : WorkspaceBehaviorSettings.CreateWorkspaceLastWorkspaceBehavior
+        },
         Shell = _basisSettings.Shell with
         {
             ExitBehavior = _shellExitBehavior.SelectedIndex == 1 ? "CloseTab" : "KeepTab"
@@ -131,6 +147,16 @@ internal sealed partial class SettingsWindow : Window
             _workspaceIndicator.IsChecked = normalized.Indicators.ShowWorkspaceIndicator;
             _remainingUsage.IsChecked = normalized.Indicators.ShowRemainingUsage;
             _autoRenewKimi.IsChecked = normalized.Indicators.AutoRenewKimiToken;
+            _lastTabClosedBehavior.SelectedIndex =
+                normalized.Workspace.LastTabClosedBehavior ==
+                    WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior
+                    ? 0
+                    : 1;
+            _lastWorkspaceClosedBehavior.SelectedIndex =
+                normalized.Workspace.LastWorkspaceClosedBehavior ==
+                    WorkspaceBehaviorSettings.QuitApplicationLastWorkspaceBehavior
+                    ? 0
+                    : 1;
             _shellExitBehavior.SelectedIndex = normalized.Shell.ExitBehavior == "CloseTab" ? 1 : 0;
         }
         finally

@@ -31,6 +31,7 @@ export interface AppSettings {
   theme: ThemeSettings;
   cursor: CursorSettings;
   indicators: IndicatorSettings;
+  workspace: WorkspaceBehaviorSettings;
   shell: ShellSettings;
 }
 
@@ -47,6 +48,11 @@ export interface IndicatorSettings {
   showWorkspaceIndicator: boolean;
   showRemainingUsage: boolean;
   autoRenewKimiToken: boolean;
+}
+
+export interface WorkspaceBehaviorSettings {
+  lastTabClosedBehavior: 'CloseWorkspace' | 'OpenNewTab';
+  lastWorkspaceClosedBehavior: 'QuitApplication' | 'CreateWorkspace';
 }
 
 export interface ShellSettings {
@@ -129,6 +135,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     showWorkspaceIndicator: true,
     showRemainingUsage: false,
     autoRenewKimiToken: false
+  },
+  workspace: {
+    lastTabClosedBehavior: 'OpenNewTab',
+    lastWorkspaceClosedBehavior: 'CreateWorkspace'
   },
   shell: {
     exitBehavior: 'KeepTab'
@@ -339,6 +349,14 @@ export class NativeBridge {
     window.open(window.location.href, '_blank', 'noopener');
   }
 
+  public quitApplication(): boolean {
+    if (!this.webView) {
+      return false;
+    }
+    this.send('window.quit', {});
+    return true;
+  }
+
   public openExternal(uri: string): void {
     if (this.webView) {
       this.send('window.openExternal', { uri });
@@ -400,6 +418,9 @@ export class NativeBridge {
     const indicators = typeof partialSettings.indicators === 'object' && partialSettings.indicators !== null
       ? partialSettings.indicators
       : DEFAULT_SETTINGS.indicators;
+    const workspace = typeof partialSettings.workspace === 'object' && partialSettings.workspace !== null
+      ? partialSettings.workspace
+      : DEFAULT_SETTINGS.workspace;
     const shell = typeof partialSettings.shell === 'object' && partialSettings.shell !== null
       ? partialSettings.shell
       : DEFAULT_SETTINGS.shell;
@@ -436,6 +457,14 @@ export class NativeBridge {
         showWorkspaceIndicator: indicators.showWorkspaceIndicator !== false,
         showRemainingUsage: indicators.showRemainingUsage === true,
         autoRenewKimiToken: indicators.autoRenewKimiToken === true
+      },
+      workspace: {
+        lastTabClosedBehavior: workspace.lastTabClosedBehavior === 'CloseWorkspace'
+          ? 'CloseWorkspace'
+          : 'OpenNewTab',
+        lastWorkspaceClosedBehavior: workspace.lastWorkspaceClosedBehavior === 'QuitApplication'
+          ? 'QuitApplication'
+          : 'CreateWorkspace'
       },
       shell: {
         exitBehavior: shell.exitBehavior === 'CloseTab' ? 'CloseTab' : 'KeepTab'

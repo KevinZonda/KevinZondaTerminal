@@ -153,6 +153,14 @@ static void TestSourceGeneratedBridgeJson()
 
 static async Task TestSettingsStoreAsync()
 {
+    var defaults = AppSettings.Normalize(null);
+    Require(
+        defaults.Workspace.LastTabClosedBehavior ==
+            WorkspaceBehaviorSettings.OpenNewTabLastTabBehavior &&
+        defaults.Workspace.LastWorkspaceClosedBehavior ==
+            WorkspaceBehaviorSettings.CreateWorkspaceLastWorkspaceBehavior,
+        "The default workspace lifecycle behaviors changed.");
+
     var path = Path.Combine(Path.GetTempPath(), $"kterm-settings-{Guid.NewGuid():N}.json");
     try
     {
@@ -166,6 +174,10 @@ static async Task TestSettingsStoreAsync()
                 "executable": "C:\\msys64\\usr\\bin\\zsh.exe",
                 "exitBehavior": "KeepTab"
               },
+              "workspace": {
+                "lastTabClosedBehavior": "CloseWorkspace",
+                "lastWorkspaceClosedBehavior": "QuitApplication"
+              },
               "conHost": { "enhancedOpenConsole": true },
               "custom": { "preserve": 42 }
             }
@@ -177,6 +189,12 @@ static async Task TestSettingsStoreAsync()
             "The shared settings model did not load the Windows shell profile.");
         Require(loaded.ConHost.EnhancedOpenConsole,
             "The shared settings model did not load the ConHost configuration.");
+        Require(
+            loaded.Workspace.LastTabClosedBehavior ==
+                WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior &&
+            loaded.Workspace.LastWorkspaceClosedBehavior ==
+                WorkspaceBehaviorSettings.QuitApplicationLastWorkspaceBehavior,
+            "The shared settings model did not load the workspace lifecycle configuration.");
 
         var saved = await store.SaveAsync(loaded with
         {
@@ -195,6 +213,12 @@ static async Task TestSettingsStoreAsync()
                 ShowRemainingUsage = true,
                 AutoRenewKimiToken = true
             },
+            Workspace = new WorkspaceBehaviorSettings
+            {
+                LastTabClosedBehavior = WorkspaceBehaviorSettings.OpenNewTabLastTabBehavior,
+                LastWorkspaceClosedBehavior =
+                    WorkspaceBehaviorSettings.CreateWorkspaceLastWorkspaceBehavior
+            },
             Shell = loaded.Shell with
             {
                 ExitBehavior = "CloseTab"
@@ -208,6 +232,11 @@ static async Task TestSettingsStoreAsync()
             "Saving Unix settings removed the Windows shell profile.");
         Require(root["shell"]?["exitBehavior"]?.GetValue<string>() == "CloseTab",
             "The shell exit behavior was not updated.");
+        Require(
+            root["workspace"]?["lastTabClosedBehavior"]?.GetValue<string>() == "OpenNewTab" &&
+            root["workspace"]?["lastWorkspaceClosedBehavior"]?.GetValue<string>() ==
+                "CreateWorkspace",
+            "The workspace lifecycle behaviors were not updated.");
         Require(root["conHost"]?["enhancedOpenConsole"]?.GetValue<bool>() == true,
             "Saving Unix settings removed enhanced OpenConsole configuration.");
         Require(root["custom"]?["preserve"]?.GetValue<int>() == 42,

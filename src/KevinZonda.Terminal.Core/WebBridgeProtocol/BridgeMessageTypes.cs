@@ -34,6 +34,7 @@ public static class BridgeMessageTypes
     public const string SystemMetricsChanged = "systemMetrics.changed";
     public const string WindowNewInstance = "window.newInstance";
     public const string WindowOpenExternal = "window.openExternal";
+    public const string WindowQuit = "window.quit";
     public const string WindowSettings = "window.settings";
     public const string WorkspaceCommand = "workspace.command";
 }

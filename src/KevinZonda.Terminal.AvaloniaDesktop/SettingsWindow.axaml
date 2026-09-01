@@ -142,6 +142,18 @@
         </StackPanel>
       </TabItem>
 
+      <TabItem Header="Behaviour">
+        <StackPanel Margin="18" Spacing="8">
+          <TextBlock Classes="field-label"
+                     Text="When the last tab in a workspace closes" />
+          <ComboBox x:Name="LastTabClosedBehaviorBox" Margin="0,0,0,12" />
+
+          <TextBlock Classes="field-label"
+                     Text="When the last workspace closes" />
+          <ComboBox x:Name="LastWorkspaceClosedBehaviorBox" />
+        </StackPanel>
+      </TabItem>
+
       <TabItem Header="Shell">
         <StackPanel Margin="18" Spacing="8">
           <TextBlock Classes="field-label" Text="When the shell exits" />

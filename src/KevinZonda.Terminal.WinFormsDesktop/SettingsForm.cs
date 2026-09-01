@@ -24,6 +24,8 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _showWorkspaceIndicator = new();
     private readonly CheckBox _showRemainingUsage = new();
     private readonly CheckBox _autoRenewKimiToken = new();
+    private readonly ComboBox _lastTabClosedBehavior = new();
+    private readonly ComboBox _lastWorkspaceClosedBehavior = new();
     private readonly TabControl _tabs = new();
     private readonly ComboBox _shellProfile = new();
     private readonly TextBox _shellExecutable = new();
@@ -59,6 +61,7 @@ internal sealed class SettingsForm : Form
         PopulateShellProfiles();
         PopulateMsys2Environments();
         PopulateShellExitBehaviors();
+        PopulateWorkspaceBehaviors();
         ApplyValues(settings);
     }
 
@@ -87,6 +90,7 @@ internal sealed class SettingsForm : Form
             ShowRemainingUsage = _showRemainingUsage.Checked,
             AutoRenewKimiToken = _autoRenewKimiToken.Checked
         },
+        Workspace = SelectedWorkspaceBehaviorSettings(),
         Shell = SelectedShellSettings(),
         ConHost = new ConHostSettings
         {
@@ -165,6 +169,7 @@ internal sealed class SettingsForm : Form
         _tabs.TabPages.Add(CreateFontPage());
         _tabs.TabPages.Add(CreateThemePage());
         _tabs.TabPages.Add(CreateIndicatorsPage());
+        _tabs.TabPages.Add(CreateBehaviorPage());
         _shellPage = CreateShellPage();
         _tabs.TabPages.Add(_shellPage);
         root.Controls.Add(_tabs, 0, 0);
@@ -490,6 +495,48 @@ internal sealed class SettingsForm : Form
         return page;
     }
 
+    private TabPage CreateBehaviorPage()
+    {
+        var page = new TabPage("Behaviour")
+        {
+            BackColor = SurfaceColor,
+            ForeColor = ForeColor,
+            Padding = new Padding(16),
+            UseVisualStyleBackColor = false
+        };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = 4,
+            BackColor = SurfaceColor,
+            Margin = new Padding(0)
+        };
+        for (var row = 0; row < layout.RowCount; row++)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
+
+        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 0);
+        ConfigureField(_lastTabClosedBehavior);
+        _lastTabClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
+        _lastTabClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
+        _lastTabClosedBehavior.Margin = new Padding(0, 5, 0, 18);
+        layout.Controls.Add(_lastTabClosedBehavior, 0, 1);
+
+        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 2);
+        ConfigureField(_lastWorkspaceClosedBehavior);
+        _lastWorkspaceClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
+        _lastWorkspaceClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
+        _lastWorkspaceClosedBehavior.Margin = new Padding(0, 5, 0, 0);
+        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 3);
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
     private Control CreateActions()
     {
         var actions = new TableLayoutPanel
@@ -578,6 +625,27 @@ internal sealed class SettingsForm : Form
         _shellExitBehavior.SelectedItem = ShellSettings.KeepTabExitBehavior;
     }
 
+    private void PopulateWorkspaceBehaviors()
+    {
+        _lastTabClosedBehavior.Items.AddRange(
+        [
+            new BehaviorOption("Close the workspace", WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior),
+            new BehaviorOption("Open a new tab", WorkspaceBehaviorSettings.OpenNewTabLastTabBehavior)
+        ]);
+        _lastTabClosedBehavior.SelectedIndex = 1;
+
+        _lastWorkspaceClosedBehavior.Items.AddRange(
+        [
+            new BehaviorOption(
+                "Quit KevinZonda Terminal",
+                WorkspaceBehaviorSettings.QuitApplicationLastWorkspaceBehavior),
+            new BehaviorOption(
+                "Create a new workspace",
+                WorkspaceBehaviorSettings.CreateWorkspaceLastWorkspaceBehavior)
+        ]);
+        _lastWorkspaceClosedBehavior.SelectedIndex = 1;
+    }
+
     private void ApplyValues(AppSettings settings)
     {
         var normalized = AppSettings.Normalize(settings);
@@ -605,6 +673,10 @@ internal sealed class SettingsForm : Form
             _showWorkspaceIndicator.Checked = normalized.Indicators.ShowWorkspaceIndicator;
             _showRemainingUsage.Checked = normalized.Indicators.ShowRemainingUsage;
             _autoRenewKimiToken.Checked = normalized.Indicators.AutoRenewKimiToken;
+            SelectBehavior(_lastTabClosedBehavior, normalized.Workspace.LastTabClosedBehavior);
+            SelectBehavior(
+                _lastWorkspaceClosedBehavior,
+                normalized.Workspace.LastWorkspaceClosedBehavior);
             _enhancedOpenConsole.Checked = normalized.ConHost.EnhancedOpenConsole;
             ApplyShellValues(normalized.Shell);
         }
@@ -684,6 +756,23 @@ internal sealed class SettingsForm : Form
             ExitBehavior = _shellExitBehavior.SelectedItem as string
                 ?? ShellSettings.KeepTabExitBehavior
         };
+    }
+
+    private WorkspaceBehaviorSettings SelectedWorkspaceBehaviorSettings() => new()
+    {
+        LastTabClosedBehavior =
+            (_lastTabClosedBehavior.SelectedItem as BehaviorOption)?.Value
+                ?? WorkspaceBehaviorSettings.OpenNewTabLastTabBehavior,
+        LastWorkspaceClosedBehavior =
+            (_lastWorkspaceClosedBehavior.SelectedItem as BehaviorOption)?.Value
+                ?? WorkspaceBehaviorSettings.CreateWorkspaceLastWorkspaceBehavior
+    };
+
+    private static void SelectBehavior(ComboBox comboBox, string value)
+    {
+        comboBox.SelectedItem = comboBox.Items
+            .Cast<BehaviorOption>()
+            .First(option => option.Value == value);
     }
 
     private void BrowseForShell()
@@ -839,4 +928,6 @@ internal sealed class SettingsForm : Form
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderColor = primary ? Color.FromArgb(98, 137, 184) : BorderColor;
     }
+
+    private sealed record BehaviorOption(string Label, string Value);
 }

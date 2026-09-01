@@ -139,6 +139,10 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     OpenExternal(GetString(message.Payload, "uri"));
                     break;
 
+                case BridgeMessageTypes.WindowQuit:
+                    _owner.RequestQuit();
+                    break;
+
                 case BridgeMessageTypes.SettingsFontSize:
                     _settings = await _settingsStore.SaveFontSizeAsync(
                         _settings,

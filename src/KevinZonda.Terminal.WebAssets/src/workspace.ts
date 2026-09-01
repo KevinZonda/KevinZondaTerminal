@@ -817,45 +817,53 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private closeWorkspace(workspaceId: string): void {
-    void this.runExclusive(async () => {
-      const index = this.workspaces.findIndex(workspace => workspace.id === workspaceId);
-      if (index < 0) {
-        return;
-      }
+    void this.runExclusive(() => this.closeWorkspaceCore(workspaceId, true));
+  }
 
-      const workspace = this.workspaces[index]!;
-      if (this.editingWorkspaceId === workspace.id) {
-        this.editingWorkspaceId = undefined;
-      }
-      const wasActive = workspace.id === this.activeWorkspaceId;
+  private async closeWorkspaceCore(workspaceId: string, closeSessions: boolean): Promise<void> {
+    const index = this.workspaces.findIndex(workspace => workspace.id === workspaceId);
+    if (index < 0) {
+      return;
+    }
+
+    const workspace = this.workspaces[index]!;
+    if (this.editingWorkspaceId === workspace.id) {
+      this.editingWorkspaceId = undefined;
+    }
+    const wasActive = workspace.id === this.activeWorkspaceId;
+    if (closeSessions) {
       for (const pane of workspace.panes.values()) {
         for (const tab of pane.tabs) {
           this.destroyTerminal(tab.sessionId);
           this.bridge.closeSession(tab.sessionId);
         }
       }
+    }
 
-      this.workspaces.splice(index, 1);
-      if (wasActive) {
-        this.activeWorkspaceId = this.workspaces[Math.min(index, this.workspaces.length - 1)]?.id;
-      }
+    this.workspaces.splice(index, 1);
+    if (wasActive) {
+      this.activeWorkspaceId = this.workspaces[Math.min(index, this.workspaces.length - 1)]?.id;
+    }
 
-      if (this.workspaces.length === 0) {
-        this.renderSidebar();
-        this.render();
-        await this.createWorkspaceCore();
+    if (this.workspaces.length === 0) {
+      this.renderSidebar();
+      this.render();
+      if (this.settings.workspace.lastWorkspaceClosedBehavior === 'QuitApplication' &&
+          this.bridge.quitApplication()) {
         return;
       }
+      await this.createWorkspaceCore();
+      return;
+    }
 
-      this.renderSidebar();
-      if (wasActive) {
-        this.render();
-        const focused = this.focusedPane;
-        if (focused) {
-          this.focusSession(focused.activeSessionId);
-        }
+    this.renderSidebar();
+    if (wasActive) {
+      this.render();
+      const focused = this.focusedPane;
+      if (focused) {
+        this.focusSession(focused.activeSessionId);
       }
-    });
+    }
   }
 
   private setSidebarMode(mode: SidebarMode): void {
@@ -1893,10 +1901,12 @@ export class Workspace implements TerminalCallbacks {
           ?? (workspace.root ? this.firstPaneId(workspace.root) : undefined);
       }
       if (!workspace.root) {
-        if (isActiveWorkspace) {
-          this.render();
+        if (this.settings.workspace.lastTabClosedBehavior === 'OpenNewTab') {
+          await this.createTabInWorkspace(workspace);
+          return;
         }
-        this.persistResumeState();
+
+        await this.closeWorkspaceCore(workspace.id, false);
         return;
       }
 

@@ -68,6 +68,10 @@ internal sealed class SettingsStore
         indicators["showRemainingUsage"] = normalized.Indicators.ShowRemainingUsage;
         indicators["autoRenewKimiToken"] = normalized.Indicators.AutoRenewKimiToken;
 
+        var workspace = GetObject(root, "workspace");
+        workspace["lastTabClosedBehavior"] = normalized.Workspace.LastTabClosedBehavior;
+        workspace["lastWorkspaceClosedBehavior"] = normalized.Workspace.LastWorkspaceClosedBehavior;
+
         var shell = GetObject(root, "shell");
         shell["profile"] = normalized.Shell.Profile;
         shell["executable"] = normalized.Shell.Executable;

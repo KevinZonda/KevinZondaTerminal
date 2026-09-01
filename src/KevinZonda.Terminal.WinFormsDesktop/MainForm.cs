@@ -175,6 +175,7 @@ internal sealed class MainForm : Form
             _systemMetrics,
             ShowSettings,
             LaunchNewInstance,
+            Close,
             OpenExternal,
             SaveFontSize,
             _settings);

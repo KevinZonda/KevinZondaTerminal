@@ -31,6 +31,10 @@ KevinZonda Terminal 是一个使用 .NET 10 和 xterm.js/WebGL 的 Terminal Emul
 
 快捷键只在 KevinZonda Terminal 位于前台时生效。
 
+Settings 的 Behavior 页可分别配置 Workspace 中最后一个 Tab 关闭后是关闭 Workspace 还是新建 Tab，
+以及最后一个 Workspace 关闭后是退出 KevinZonda Terminal 还是创建一个带初始 Tab 的新 Workspace。
+默认行为是新建 Tab 和创建新 Workspace。
+
 最近 Workspace 只记录窗口的启动目录，不恢复 Tab、Pane 或 Shell 状态；记录保存在
 `%USERPROFILE%\.kterm\recent_workspaces.json`。不存在的目录会自动移除，在 Windows Jump List 中手动删除的项目也会受到尊重。
 

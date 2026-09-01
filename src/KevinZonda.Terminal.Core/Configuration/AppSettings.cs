@@ -15,6 +15,8 @@ internal sealed record AppSettings
 
     public IndicatorSettings Indicators { get; init; } = new();
 
+    public WorkspaceBehaviorSettings Workspace { get; init; } = new();
+
     public ShellSettings Shell { get; init; } = new();
 
     public ConHostSettings ConHost { get; init; } = new();
@@ -48,10 +50,34 @@ internal sealed record AppSettings
             },
             Cursor = CursorSettings.Normalize(settings?.Cursor),
             Indicators = IndicatorSettings.Normalize(settings?.Indicators),
+            Workspace = WorkspaceBehaviorSettings.Normalize(settings?.Workspace),
             Shell = ShellSettings.Normalize(settings?.Shell),
             ConHost = ConHostSettings.Normalize(settings?.ConHost)
         };
     }
+}
+
+internal sealed record WorkspaceBehaviorSettings
+{
+    internal const string CloseWorkspaceLastTabBehavior = "CloseWorkspace";
+    internal const string OpenNewTabLastTabBehavior = "OpenNewTab";
+    internal const string QuitApplicationLastWorkspaceBehavior = "QuitApplication";
+    internal const string CreateWorkspaceLastWorkspaceBehavior = "CreateWorkspace";
+
+    public string LastTabClosedBehavior { get; init; } = OpenNewTabLastTabBehavior;
+
+    public string LastWorkspaceClosedBehavior { get; init; } = CreateWorkspaceLastWorkspaceBehavior;
+
+    internal static WorkspaceBehaviorSettings Normalize(WorkspaceBehaviorSettings? settings) => new()
+    {
+        LastTabClosedBehavior = settings?.LastTabClosedBehavior == CloseWorkspaceLastTabBehavior
+            ? CloseWorkspaceLastTabBehavior
+            : OpenNewTabLastTabBehavior,
+        LastWorkspaceClosedBehavior =
+            settings?.LastWorkspaceClosedBehavior == QuitApplicationLastWorkspaceBehavior
+                ? QuitApplicationLastWorkspaceBehavior
+                : CreateWorkspaceLastWorkspaceBehavior
+    };
 }
 
 internal sealed record ConHostSettings

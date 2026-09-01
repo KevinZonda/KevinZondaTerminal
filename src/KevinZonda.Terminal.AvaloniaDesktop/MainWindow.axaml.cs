@@ -126,9 +126,11 @@ public sealed partial class MainWindow : Window
 
     private bool QuitApplication()
     {
-        Close();
+        RequestQuit();
         return true;
     }
+
+    internal void RequestQuit() => Close();
 
     private bool OpenSettings()
     {

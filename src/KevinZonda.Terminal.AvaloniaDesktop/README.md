@@ -18,7 +18,8 @@
 应用级快捷键在 macOS 使用 Command（例如 `⌘T`、`⌘\\`、`⌘-`、`⌘W`），Linux
 使用 Alt。`⌘W`/`Alt+W` 关闭当前 Tab；若它是 Pane 中最后一个 Tab，则同时关闭 Pane。macOS
 的 Option 不会被这些应用命令截获。Settings 可从应用菜单打开；macOS 同时支持
-`⌘,` 和 `⌘S`，Linux 使用 `Alt+S`。
+`⌘,` 和 `⌘S`，Linux 使用 `Alt+S`。Behavior 页可分别配置最后一个 Tab 和最后一个
+Workspace 关闭后的行为。
 
 运行：
 
