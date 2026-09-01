@@ -29,6 +29,15 @@ Require(UnixAgentProcessDetector.Classify("/opt/homebrew/bin/codex-aarch64") == 
     "A platform-specific Codex executable was not recognized.");
 Require(UnixAgentProcessDetector.Classify("/usr/local/bin/kimi_code") == UsageProvider.KimiCode,
     "The Kimi Code executable was not recognized.");
+if (OperatingSystem.IsMacOS())
+{
+    Require(UnixTerminalSession.NeedsMacOSUtf8Locale(null, null, null),
+        "Finder-style macOS launches should receive a UTF-8 locale fallback.");
+    Require(!UnixTerminalSession.NeedsMacOSUtf8Locale(null, null, "en_US.UTF-8"),
+        "An explicitly configured locale should not be replaced.");
+    Require(!UnixTerminalSession.NeedsMacOSUtf8Locale("C", null, null),
+        "An explicitly configured LC_ALL should not be replaced.");
+}
 
 await using var service = new SystemMetricsService();
 var updateCount = 0;

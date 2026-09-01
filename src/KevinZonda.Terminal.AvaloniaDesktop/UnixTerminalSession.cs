@@ -50,6 +50,20 @@ internal sealed class UnixTerminalSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var shell = ResolveShell();
+        var environment = new Dictionary<string, string?>
+        {
+            ["TERM"] = "xterm-256color",
+            ["COLORTERM"] = "truecolor",
+            ["TERM_PROGRAM"] = "KevinZondaTerminal"
+        };
+        if (NeedsMacOSUtf8Locale(
+                Environment.GetEnvironmentVariable("LC_ALL"),
+                Environment.GetEnvironmentVariable("LC_CTYPE"),
+                Environment.GetEnvironmentVariable("LANG")))
+        {
+            environment["LC_CTYPE"] = "UTF-8";
+        }
+
         var process = await UnixPtyProcess.StartAsync(new PtyStartInfo
         {
             FileName = shell,
@@ -57,12 +71,7 @@ internal sealed class UnixTerminalSession : IAsyncDisposable
             WorkingDirectory = workingDirectory,
             Columns = Math.Clamp(columns, 2, ushort.MaxValue),
             Rows = Math.Clamp(rows, 1, ushort.MaxValue),
-            Environment = new Dictionary<string, string?>
-            {
-                ["TERM"] = "xterm-256color",
-                ["COLORTERM"] = "truecolor",
-                ["TERM_PROGRAM"] = "KevinZondaTerminal"
-            }
+            Environment = environment
         }, cancellationToken).ConfigureAwait(false);
 
         return new UnixTerminalSession(
@@ -154,6 +163,15 @@ internal sealed class UnixTerminalSession : IAsyncDisposable
 
         return "/bin/sh";
     }
+
+    internal static bool NeedsMacOSUtf8Locale(
+        string? lcAll,
+        string? lcCtype,
+        string? lang) =>
+        OperatingSystem.IsMacOS() &&
+        string.IsNullOrWhiteSpace(lcAll) &&
+        string.IsNullOrWhiteSpace(lcCtype) &&
+        string.IsNullOrWhiteSpace(lang);
 
     public async ValueTask DisposeAsync()
     {
