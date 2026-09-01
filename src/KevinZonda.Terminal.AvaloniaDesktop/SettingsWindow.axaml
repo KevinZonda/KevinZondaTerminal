@@ -23,6 +23,8 @@
     <Style Selector="Button.action">
       <Setter Property="MinWidth" Value="88" />
       <Setter Property="Padding" Value="14,7" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
   </Window.Styles>
 
