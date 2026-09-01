@@ -1,4 +1,4 @@
-namespace KevinZonda.Terminal.RecentWorkspaces;
+namespace KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces;
 
 internal sealed record WorkspaceLaunchCommand(
     string ExecutablePath,

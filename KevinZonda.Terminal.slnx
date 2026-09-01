@@ -4,7 +4,7 @@
   <Project Path="src/KevinZonda.Terminal.AvaloniaDesktop/KevinZonda.Terminal.AvaloniaDesktop.csproj" />
   <Project Path="src/KevinZonda.Terminal.ConPty/KevinZonda.Terminal.ConPty.csproj" />
   <Project Path="src/KevinZonda.Terminal.Core/KevinZonda.Terminal.Core.csproj" />
-  <Project Path="src/KevinZonda.Terminal.RecentWorkspaces/KevinZonda.Terminal.RecentWorkspaces.csproj" />
+  <Project Path="src/KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces/KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.Dashboard/KevinZonda.Terminal.Server.Dashboard.csproj" />
   <Project Path="src/KevinZonda.Terminal.WebAssets/KevinZonda.Terminal.WebAssets.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.csproj" />

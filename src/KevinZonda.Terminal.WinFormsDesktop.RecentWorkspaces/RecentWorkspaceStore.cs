@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace KevinZonda.Terminal.RecentWorkspaces;
+namespace KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces;
 
 internal sealed class RecentWorkspaceStore
 {

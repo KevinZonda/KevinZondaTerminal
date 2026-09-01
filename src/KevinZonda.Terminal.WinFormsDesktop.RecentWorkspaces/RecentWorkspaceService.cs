@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace KevinZonda.Terminal.RecentWorkspaces;
+namespace KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces;
 
 public static class RecentWorkspaceService
 {

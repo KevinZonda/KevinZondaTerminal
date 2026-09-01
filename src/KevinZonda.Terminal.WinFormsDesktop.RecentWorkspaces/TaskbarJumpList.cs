@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace KevinZonda.Terminal.RecentWorkspaces;
+namespace KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces;
 
 internal static class TaskbarJumpList
 {

@@ -2,7 +2,7 @@ using System.Diagnostics;
 using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Hosting;
 using KevinZonda.Terminal.Interop;
-using KevinZonda.Terminal.RecentWorkspaces;
+using KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces;
 
 namespace KevinZonda.Terminal;
 

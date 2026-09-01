@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' == 'win-x64'">
-    <PublishReadyToRunExclude Include="KevinZonda.Terminal.RecentWorkspaces.dll" />
+    <PublishReadyToRunExclude Include="KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces.dll" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,7 +35,7 @@
     <ProjectReference Include="..\KevinZonda.SystemMetrics\KevinZonda.SystemMetrics.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.ConPty\KevinZonda.Terminal.ConPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
-    <ProjectReference Include="..\KevinZonda.Terminal.RecentWorkspaces\KevinZonda.Terminal.RecentWorkspaces.csproj" />
+    <ProjectReference Include="..\KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces\KevinZonda.Terminal.WinFormsDesktop.RecentWorkspaces.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
   </ItemGroup>
 
