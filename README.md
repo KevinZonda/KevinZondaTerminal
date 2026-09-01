@@ -1,6 +1,6 @@
 # KevinZonda Terminal
 
-KevinZonda Terminal 是一个面向 Windows 的最小化 Terminal Emulator MVP。原生宿主使用 .NET 10 WinForms 和 WebView2；终端前端使用 xterm.js/WebGL；每个 Pane 都连接独立的 ConPTY 和 Shell 进程。终端会话优先使用随应用分发的 passthrough ConPTY（`OpenConsole.exe`，来自 Windows Terminal，MIT），让 DECSTBM 等 VT 序列原样到达前端；该文件缺失时自动回退到系统 inbox conhost。
+KevinZonda Terminal 是一个使用 .NET 10 和 xterm.js/WebGL 的 Terminal Emulator。Windows 稳定版宿主使用 WinForms、WebView2 和 ConPTY；macOS/Linux 预览版宿主使用 Avalonia、NativeWebView 和 Unix PTY。Windows 终端会话优先使用随应用分发的 passthrough ConPTY（`OpenConsole.exe`，来自 Windows Terminal，MIT），让 DECSTBM 等 VT 序列原样到达前端；该文件缺失时自动回退到系统 inbox conhost。
 
 ## 当前功能
 
@@ -34,7 +34,7 @@ KevinZonda Terminal 是一个面向 Windows 的最小化 Terminal Emulator MVP�
 
 ## 构建和运行
 
-源代码构建需要：
+Windows 桌面端构建需要：
 
 - Windows 10 1903 或更高版本
 - .NET 10 SDK
@@ -46,6 +46,15 @@ KevinZonda Terminal 是一个面向 Windows 的最小化 Terminal Emulator MVP�
 dotnet build KevinZonda.Terminal.slnx
 dotnet run --project src\KevinZonda.Terminal\KevinZonda.Terminal.csproj
 ```
+
+macOS/Linux Avalonia 预览版复用同一套终端前端，运行方法如下：
+
+```bash
+dotnet run --project src/KevinZonda.Terminal.AvaloniaDesktop
+```
+
+macOS 使用系统 WKWebView；Linux 的嵌入式 WebView 需要 WPE WebKit。更多说明见
+[Avalonia Desktop README](src/KevinZonda.Terminal.AvaloniaDesktop/README.md)。
 
 启动浏览器 Server（默认监听所有网卡的 `7132` 端口）：
 

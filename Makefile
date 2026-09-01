@@ -1,5 +1,6 @@
 SOLUTION := KevinZonda.Terminal.slnx
 PROJECT := src/KevinZonda.Terminal/KevinZonda.Terminal.csproj
+AVALONIA_PROJECT := src/KevinZonda.Terminal.AvaloniaDesktop/KevinZonda.Terminal.AvaloniaDesktop.csproj
 SERVER_PROJECT := src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.csproj
 LAUNCHER_PROJECT := src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.Server.Launcher.csproj
 AUTH_TEST_PROJECT := tests/KevinZonda.Terminal.Server.UserAuth.Tests/KevinZonda.Terminal.Server.UserAuth.Tests.csproj
@@ -24,12 +25,30 @@ INSTALL_LAUNCHER_EXE := $(INSTALL_DIR)/kterm-server-launcher.exe
 SERVER_URL ?= http://0.0.0.0:7132
 AUTH_FILE ?=
 AUTH_FILE_ARG = $(if $(strip $(AUTH_FILE)),--file "$(AUTH_FILE)",)
+AVALONIA_ARGS ?=
+HOST_OS := $(shell uname -s 2>/dev/null)
+HOST_ARCH := $(shell uname -m 2>/dev/null)
+ifeq ($(HOST_ARCH),x86_64)
+AVALONIA_ARCH := x64
+else ifeq ($(HOST_ARCH),aarch64)
+AVALONIA_ARCH := arm64
+else
+AVALONIA_ARCH := $(HOST_ARCH)
+endif
+ifeq ($(HOST_OS),Darwin)
+AVALONIA_RID ?= osx-$(AVALONIA_ARCH)
+else ifeq ($(HOST_OS),Linux)
+AVALONIA_RID ?= linux-$(AVALONIA_ARCH)
+else
+AVALONIA_RID ?= unsupported
+endif
+AVALONIA_SELF_CONTAINED ?= false
 
 CONFIG ?= Debug
 
 .DEFAULT_GOAL := build
 
-.PHONY: help deps install restore web dashboard build run run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-launcher-cert test-auth test-unix-pty format audit publish publish-desktop publish-server publish-launcher clean
+.PHONY: help deps install restore web dashboard build build-avalonia run run-avalonia run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-launcher-cert test-auth test-unix-pty format audit publish publish-desktop publish-avalonia publish-server publish-launcher clean
 
 help:
 	@echo "Available targets:"
@@ -38,7 +57,9 @@ help:
 	@echo "  make web       - type-check and build the terminal and Dashboard frontends"
 	@echo "  make dashboard - type-check and build the Server Dashboard frontend"
 	@echo "  make build     - build KevinZonda Terminal; CONFIG=Debug by default"
+	@echo "  make build-avalonia - build the macOS/Linux Avalonia desktop app"
 	@echo "  make run       - build and run KevinZonda Terminal"
+	@echo "  make run-avalonia - run the Avalonia app; optionally set AVALONIA_ARGS='--working-directory path'"
 	@echo "  make run-server - build and run kterm-server; SERVER_URL=http://0.0.0.0:7132"
 	@echo "  make run-launcher - build and run the Server tray Launcher"
 	@echo "  make auth-init - create server_auth.json; optionally set AUTH_FILE=path"
@@ -56,6 +77,7 @@ help:
 	@echo "  make audit     - audit NuGet and pnpm dependencies"
 	@echo "  make publish   - publish all ReadyToRun single-file win-x64 executables"
 	@echo "  make publish-desktop - publish the desktop executable"
+	@echo "  make publish-avalonia - publish for the current host RID; override AVALONIA_RID if needed"
 	@echo "  make publish-server - publish the server executable"
 	@echo "  make publish-launcher - publish the Server tray Launcher"
 	@echo "  make clean     - clean .NET build outputs"
@@ -81,8 +103,14 @@ dashboard:
 build:
 	dotnet build $(SOLUTION) -c $(CONFIG) --nologo
 
+build-avalonia:
+	dotnet build $(AVALONIA_PROJECT) -c $(CONFIG) --nologo
+
 run:
 	dotnet run --project $(PROJECT) -c $(CONFIG)
+
+run-avalonia:
+	dotnet run --project $(AVALONIA_PROJECT) -c $(CONFIG) -- $(AVALONIA_ARGS)
 
 run-server:
 	dotnet run --project $(SERVER_PROJECT) -c $(CONFIG) -- --urls $(SERVER_URL)
@@ -134,6 +162,9 @@ publish: publish-desktop publish-launcher
 
 publish-desktop:
 	dotnet publish $(PROJECT) -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true --nologo
+
+publish-avalonia:
+	dotnet publish $(AVALONIA_PROJECT) -c Release -r $(AVALONIA_RID) --self-contained $(AVALONIA_SELF_CONTAINED) --nologo
 
 publish-server:
 	dotnet publish $(SERVER_PROJECT) -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true --nologo
