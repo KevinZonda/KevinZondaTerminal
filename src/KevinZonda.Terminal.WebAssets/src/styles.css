@@ -822,6 +822,7 @@ button {
 }
 
 .pane-tab {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(48px, 160px) 24px;
   flex: 0 1 190px;
@@ -849,6 +850,26 @@ button {
   border-bottom-color: var(--terminal-background, #0c0f14);
 }
 
+.pane-tab.bell-unviewed {
+  border-color: var(--chrome-accent, #88c0d0);
+  box-shadow: inset 0 2px 0 var(--chrome-accent, #88c0d0);
+}
+
+.pane-tab.bell-ringing {
+  animation: pane-tab-bell-flash 1.2s ease-in-out;
+}
+
+@keyframes pane-tab-bell-flash {
+  0%, 32%, 65%, 100% {
+    filter: brightness(1);
+  }
+
+  16%, 49%, 82% {
+    filter: brightness(1.75);
+    box-shadow: inset 0 0 0 1px var(--chrome-accent, #88c0d0);
+  }
+}
+
 .pane-tab-activate,
 .pane-tab-close,
 .pane-new-tab {
@@ -864,6 +885,32 @@ button {
   text-overflow: ellipsis;
   text-align: left;
   font-size: 12px;
+}
+
+.pane-tab.has-bell .pane-tab-activate {
+  padding-right: 27px;
+}
+
+.pane-tab-bell {
+  position: absolute;
+  top: 50%;
+  right: 27px;
+  width: 15px;
+  height: 15px;
+  color: var(--chrome-accent, #88c0d0);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.pane-tab-bell svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .pane-tab-close {
@@ -883,6 +930,13 @@ button {
   border-radius: 5px;
   font-size: 18px;
   opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-tab.bell-ringing {
+    animation: none;
+    border-color: var(--chrome-accent, #88c0d0);
+  }
 }
 
 .pane-content {

@@ -64,12 +64,23 @@ internal sealed record BellSettings
 {
     internal const string NoneSound = "None";
     internal const string Tone880To660HzSound = "880-660Hz";
+    internal const string NoVisualFeedback = "None";
+    internal const string BriefVisualFeedback = "Briefly";
+    internal const string UntilViewedVisualFeedback = "UntilViewed";
 
     public string Sound { get; init; } = Tone880To660HzSound;
 
+    public string VisualFeedback { get; init; } = BriefVisualFeedback;
+
     internal static BellSettings Normalize(BellSettings? settings) => new()
     {
-        Sound = settings?.Sound == NoneSound ? NoneSound : Tone880To660HzSound
+        Sound = settings?.Sound == NoneSound ? NoneSound : Tone880To660HzSound,
+        VisualFeedback = settings?.VisualFeedback switch
+        {
+            NoVisualFeedback => NoVisualFeedback,
+            UntilViewedVisualFeedback => UntilViewedVisualFeedback,
+            _ => BriefVisualFeedback
+        }
     };
 }
 

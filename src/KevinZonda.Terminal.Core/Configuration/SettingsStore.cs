@@ -63,7 +63,9 @@ internal sealed class SettingsStore
         cursor["shape"] = normalized.Cursor.Shape;
         cursor["blink"] = normalized.Cursor.Blink;
 
-        GetObject(root, "bell")["sound"] = normalized.Bell.Sound;
+        var bell = GetObject(root, "bell");
+        bell["sound"] = normalized.Bell.Sound;
+        bell["visualFeedback"] = normalized.Bell.VisualFeedback;
 
         var indicators = GetObject(root, "indicators");
         indicators["showWorkspaceIndicator"] = normalized.Indicators.ShowWorkspaceIndicator;

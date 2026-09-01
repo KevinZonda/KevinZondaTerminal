@@ -47,6 +47,7 @@ export interface CursorSettings {
 
 export interface BellSettings {
   sound: 'None' | '880-660Hz';
+  visualFeedback: 'None' | 'Briefly' | 'UntilViewed';
 }
 
 export interface IndicatorSettings {
@@ -137,7 +138,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     blink: true
   },
   bell: {
-    sound: '880-660Hz'
+    sound: '880-660Hz',
+    visualFeedback: 'Briefly'
   },
   indicators: {
     showWorkspaceIndicator: true,
@@ -465,7 +467,10 @@ export class NativeBridge {
         blink: cursor.blink !== false
       },
       bell: {
-        sound: bell.sound === 'None' ? 'None' : '880-660Hz'
+        sound: bell.sound === 'None' ? 'None' : '880-660Hz',
+        visualFeedback: bell.visualFeedback === 'None' || bell.visualFeedback === 'UntilViewed'
+          ? bell.visualFeedback
+          : 'Briefly'
       },
       indicators: {
         showWorkspaceIndicator: indicators.showWorkspaceIndicator !== false,

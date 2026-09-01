@@ -27,6 +27,7 @@ internal sealed partial class SettingsWindow : Window
     private readonly CheckBox _remainingUsage;
     private readonly CheckBox _autoRenewKimi;
     private readonly ComboBox _bellSound;
+    private readonly ComboBox _bellVisualFeedback;
     private readonly ComboBox _lastTabClosedBehavior;
     private readonly ComboBox _lastWorkspaceClosedBehavior;
     private readonly ComboBox _shellExitBehavior;
@@ -56,6 +57,7 @@ internal sealed partial class SettingsWindow : Window
         _remainingUsage = Find<CheckBox>("RemainingUsageBox");
         _autoRenewKimi = Find<CheckBox>("AutoRenewKimiBox");
         _bellSound = Find<ComboBox>("BellSoundBox");
+        _bellVisualFeedback = Find<ComboBox>("BellVisualFeedbackBox");
         _lastTabClosedBehavior = Find<ComboBox>("LastTabClosedBehaviorBox");
         _lastWorkspaceClosedBehavior = Find<ComboBox>("LastWorkspaceClosedBehaviorBox");
         _shellExitBehavior = Find<ComboBox>("ShellExitBehaviorBox");
@@ -67,6 +69,7 @@ internal sealed partial class SettingsWindow : Window
         _cursorShape.ItemsSource = new[] { "Block", "Underline", "Bar" };
         _theme.ItemsSource = TerminalThemeCatalog.All.Select(theme => theme.Name).ToArray();
         _bellSound.ItemsSource = new[] { "None", "880–660 Hz" };
+        _bellVisualFeedback.ItemsSource = new[] { "None", "Briefly", "Until viewed" };
         _lastTabClosedBehavior.ItemsSource = new[] { "Close the workspace", "Open a new tab" };
         _lastWorkspaceClosedBehavior.ItemsSource =
             new[] { "Quit KevinZonda Terminal", "Create a new workspace" };
@@ -113,7 +116,13 @@ internal sealed partial class SettingsWindow : Window
         {
             Sound = _bellSound.SelectedIndex == 0
                 ? BellSettings.NoneSound
-                : BellSettings.Tone880To660HzSound
+                : BellSettings.Tone880To660HzSound,
+            VisualFeedback = _bellVisualFeedback.SelectedIndex switch
+            {
+                0 => BellSettings.NoVisualFeedback,
+                2 => BellSettings.UntilViewedVisualFeedback,
+                _ => BellSettings.BriefVisualFeedback
+            }
         },
         Workspace = new WorkspaceBehaviorSettings
         {
@@ -157,6 +166,12 @@ internal sealed partial class SettingsWindow : Window
             _remainingUsage.IsChecked = normalized.Indicators.ShowRemainingUsage;
             _autoRenewKimi.IsChecked = normalized.Indicators.AutoRenewKimiToken;
             _bellSound.SelectedIndex = normalized.Bell.Sound == BellSettings.NoneSound ? 0 : 1;
+            _bellVisualFeedback.SelectedIndex = normalized.Bell.VisualFeedback switch
+            {
+                BellSettings.NoVisualFeedback => 0,
+                BellSettings.UntilViewedVisualFeedback => 2,
+                _ => 1
+            };
             _lastTabClosedBehavior.SelectedIndex =
                 normalized.Workspace.LastTabClosedBehavior ==
                     WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior

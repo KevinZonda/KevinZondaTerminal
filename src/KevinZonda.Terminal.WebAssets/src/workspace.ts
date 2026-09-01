@@ -91,6 +91,7 @@ export class Workspace implements TerminalCallbacks {
   private static readonly PEEK_CLOSE_DELAY = 250;
   private static readonly USAGE_TOOLTIP_OPEN_DELAY = 160;
   private static readonly USAGE_TOOLTIP_CLOSE_DELAY = 180;
+  private static readonly BELL_FLASH_DURATION_MS = 1200;
   private static readonly USE_META_APPLICATION_SHORTCUTS =
     navigator.platform.startsWith('Mac') || navigator.userAgent.includes('Macintosh');
 
@@ -116,6 +117,9 @@ export class Workspace implements TerminalCallbacks {
   private readonly earlyOutput = new Map<string, Array<{ data: string; outputSeq: number }>>();
   private readonly closedSessionIds = new Set<string>();
   private readonly pendingExitedSessionIds = new Set<string>();
+  private readonly ringingBellSessionIds = new Set<string>();
+  private readonly unviewedBellSessionIds = new Set<string>();
+  private readonly bellFlashTimers = new Map<string, number>();
   private readonly workspaces: WorkspaceState[] = [];
   private readonly paneElements = new Map<string, HTMLElement>();
   private agentUsageStatus: AgentUsageStatus = { providers: [] };
@@ -213,7 +217,7 @@ export class Workspace implements TerminalCallbacks {
     this.app.addEventListener('-xterm-gesturecontextmenu', this.handleSuppressedXtermTouchGesture, { capture: true });
     document.documentElement.addEventListener('pointerleave', this.handleViewportPointerLeave);
     window.addEventListener('blur', this.handleWindowBlur);
-    window.addEventListener('focus', this.updateMobileInputToolbar);
+    window.addEventListener('focus', this.handleWindowFocus);
     window.addEventListener('resize', () => {
       this.hideAgentUsageTooltip();
       this.updateMobileInputToolbar();
@@ -509,11 +513,73 @@ export class Workspace implements TerminalCallbacks {
     pane.activeSessionId = sessionId;
     workspace.focusedPaneId = pane.id;
     this.updateFocusState();
+    this.clearViewedBell(sessionId);
   }
 
-  public onBell(_sessionId: string): void {
+  public onBell(sessionId: string): void {
     if (this.settings.bell.sound !== 'None') {
       this.bellPlayer.play();
+    }
+    this.showBellVisualFeedback(sessionId);
+  }
+
+  private showBellVisualFeedback(sessionId: string): void {
+    const mode = this.settings.bell.visualFeedback;
+    if (mode === 'None') {
+      return;
+    }
+
+    this.ringingBellSessionIds.add(sessionId);
+    if (mode === 'UntilViewed' && !this.isSessionViewed(sessionId)) {
+      this.unviewedBellSessionIds.add(sessionId);
+    } else {
+      this.unviewedBellSessionIds.delete(sessionId);
+    }
+
+    const existingTimer = this.bellFlashTimers.get(sessionId);
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+    }
+    this.bellFlashTimers.set(sessionId, window.setTimeout(() => {
+      this.bellFlashTimers.delete(sessionId);
+      this.ringingBellSessionIds.delete(sessionId);
+      this.refreshBellTab(sessionId);
+    }, Workspace.BELL_FLASH_DURATION_MS));
+    this.refreshBellTab(sessionId);
+  }
+
+  private isSessionViewed(sessionId: string): boolean {
+    const match = this.findWorkspacePaneBySession(sessionId);
+    return Boolean(
+      match &&
+      match.workspace.id === this.activeWorkspaceId &&
+      match.workspace.focusedPaneId === match.pane.id &&
+      match.pane.activeSessionId === sessionId &&
+      document.visibilityState === 'visible' &&
+      document.hasFocus()
+    );
+  }
+
+  private clearViewedBell(sessionId: string): void {
+    if (!this.unviewedBellSessionIds.has(sessionId) || !this.isSessionViewed(sessionId)) {
+      return;
+    }
+    this.unviewedBellSessionIds.delete(sessionId);
+    this.refreshBellTab(sessionId);
+  }
+
+  private clearAllBellVisualFeedback(): void {
+    this.bellFlashTimers.forEach(timer => window.clearTimeout(timer));
+    this.bellFlashTimers.clear();
+    this.ringingBellSessionIds.clear();
+    this.unviewedBellSessionIds.clear();
+    this.activeWorkspace?.panes.forEach(pane => this.refreshPaneTabs(pane));
+  }
+
+  private refreshBellTab(sessionId: string): void {
+    const match = this.findWorkspacePaneBySession(sessionId);
+    if (match && match.workspace.id === this.activeWorkspaceId) {
+      this.refreshPaneTabs(match.pane);
     }
   }
 
@@ -586,6 +652,11 @@ export class Workspace implements TerminalCallbacks {
     if (document.visibilityState === 'hidden') {
       this.persistResumeState();
       this.checkpointAllTerminals();
+      return;
+    }
+    const sessionId = this.focusedPane?.activeSessionId;
+    if (sessionId) {
+      this.clearViewedBell(sessionId);
     }
   };
 
@@ -1265,6 +1336,14 @@ export class Workspace implements TerminalCallbacks {
     }
   };
 
+  private readonly handleWindowFocus = (): void => {
+    this.updateMobileInputToolbar();
+    const sessionId = this.focusedPane?.activeSessionId;
+    if (sessionId) {
+      this.clearViewedBell(sessionId);
+    }
+  };
+
   private readonly handleViewportPointerLeave = (): void => {
     this.pointerInsideViewport = false;
     this.lastPointerClientX = Number.POSITIVE_INFINITY;
@@ -1398,7 +1477,12 @@ export class Workspace implements TerminalCallbacks {
   private applySettings(settings: AppSettings): void {
     const usageDisplayChanged =
       this.settings.indicators.showRemainingUsage !== settings.indicators.showRemainingUsage;
+    const visualBellChanged =
+      this.settings.bell.visualFeedback !== settings.bell.visualFeedback;
     this.settings = settings;
+    if (visualBellChanged) {
+      this.clearAllBellVisualFeedback();
+    }
     this.workspaceIndicator.hidden = !settings.indicators.showWorkspaceIndicator;
     if (settings.indicators.showWorkspaceIndicator) {
       this.revealActiveWorkspaceIndicator();
@@ -1567,6 +1651,12 @@ export class Workspace implements TerminalCallbacks {
       tabElement.className = 'pane-tab';
       tabElement.dataset.sessionId = tab.sessionId;
       tabElement.classList.toggle('active', tab.sessionId === pane.activeSessionId);
+      const bellRinging = this.ringingBellSessionIds.has(tab.sessionId);
+      const bellUnviewed = this.unviewedBellSessionIds.has(tab.sessionId);
+      const hasBell = bellRinging || bellUnviewed;
+      tabElement.classList.toggle('has-bell', hasBell);
+      tabElement.classList.toggle('bell-ringing', bellRinging);
+      tabElement.classList.toggle('bell-unviewed', bellUnviewed);
       tabElement.addEventListener('pointerdown', event => {
         if (event.button === 1) {
           event.preventDefault();
@@ -1594,7 +1684,10 @@ export class Workspace implements TerminalCallbacks {
       const activate = document.createElement('button');
       activate.type = 'button';
       activate.className = 'pane-tab-activate';
-      activate.title = `${tab.title}\n${tab.processInfo}`;
+      activate.title = `${tab.title}\n${tab.processInfo}${hasBell ? '\nBell rang' : ''}`;
+      if (hasBell) {
+        activate.setAttribute('aria-label', `${tab.title || 'Terminal'}, bell notification`);
+      }
       activate.textContent = tab.title || 'Terminal';
       activate.addEventListener('click', event => {
         // Pointer activation is handled on pointerup so a small hand movement
@@ -1615,7 +1708,16 @@ export class Workspace implements TerminalCallbacks {
         event.stopPropagation();
         this.closeTerminalTab(pane.id, tab.sessionId);
       });
-      tabElement.append(activate, close);
+      tabElement.append(activate);
+      if (hasBell) {
+        const bell = document.createElement('span');
+        bell.className = 'pane-tab-bell';
+        bell.title = 'Bell rang';
+        bell.setAttribute('aria-hidden', 'true');
+        bell.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+        tabElement.append(bell);
+      }
+      tabElement.append(close);
       fragment.append(tabElement);
     }
 
@@ -1941,6 +2043,13 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private destroyTerminal(sessionId: string): void {
+    const bellTimer = this.bellFlashTimers.get(sessionId);
+    if (bellTimer !== undefined) {
+      window.clearTimeout(bellTimer);
+      this.bellFlashTimers.delete(sessionId);
+    }
+    this.ringingBellSessionIds.delete(sessionId);
+    this.unviewedBellSessionIds.delete(sessionId);
     this.terminals.get(sessionId)?.dispose();
     this.terminals.delete(sessionId);
     this.earlyOutput.delete(sessionId);

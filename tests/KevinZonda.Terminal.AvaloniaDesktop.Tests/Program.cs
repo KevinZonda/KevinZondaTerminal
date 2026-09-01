@@ -162,6 +162,8 @@ static async Task TestSettingsStoreAsync()
         "The default workspace lifecycle behaviors changed.");
     Require(defaults.Bell.Sound == BellSettings.Tone880To660HzSound,
         "The default bell sound changed.");
+    Require(defaults.Bell.VisualFeedback == BellSettings.BriefVisualFeedback,
+        "The default visual bell behavior changed.");
 
     var path = Path.Combine(Path.GetTempPath(), $"kterm-settings-{Guid.NewGuid():N}.json");
     try
@@ -180,7 +182,7 @@ static async Task TestSettingsStoreAsync()
                 "lastTabClosedBehavior": "CloseWorkspace",
                 "lastWorkspaceClosedBehavior": "QuitApplication"
               },
-              "bell": { "sound": "None" },
+              "bell": { "sound": "None", "visualFeedback": "UntilViewed" },
               "conHost": { "enhancedOpenConsole": true },
               "custom": { "preserve": 42 }
             }
@@ -194,6 +196,8 @@ static async Task TestSettingsStoreAsync()
             "The shared settings model did not load the ConHost configuration.");
         Require(loaded.Bell.Sound == BellSettings.NoneSound,
             "The shared settings model did not load the bell sound.");
+        Require(loaded.Bell.VisualFeedback == BellSettings.UntilViewedVisualFeedback,
+            "The shared settings model did not load the visual bell behavior.");
         Require(
             loaded.Workspace.LastTabClosedBehavior ==
                 WorkspaceBehaviorSettings.CloseWorkspaceLastTabBehavior &&
@@ -218,7 +222,11 @@ static async Task TestSettingsStoreAsync()
                 ShowRemainingUsage = true,
                 AutoRenewKimiToken = true
             },
-            Bell = new BellSettings { Sound = BellSettings.Tone880To660HzSound },
+            Bell = new BellSettings
+            {
+                Sound = BellSettings.Tone880To660HzSound,
+                VisualFeedback = BellSettings.BriefVisualFeedback
+            },
             Workspace = new WorkspaceBehaviorSettings
             {
                 LastTabClosedBehavior = WorkspaceBehaviorSettings.OpenNewTabLastTabBehavior,
@@ -240,6 +248,8 @@ static async Task TestSettingsStoreAsync()
             "The shell exit behavior was not updated.");
         Require(root["bell"]?["sound"]?.GetValue<string>() == "880-660Hz",
             "The bell sound was not updated.");
+        Require(root["bell"]?["visualFeedback"]?.GetValue<string>() == "Briefly",
+            "The visual bell behavior was not updated.");
         Require(
             root["workspace"]?["lastTabClosedBehavior"]?.GetValue<string>() == "OpenNewTab" &&
             root["workspace"]?["lastWorkspaceClosedBehavior"]?.GetValue<string>() ==

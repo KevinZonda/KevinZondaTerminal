@@ -25,6 +25,7 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _showRemainingUsage = new();
     private readonly CheckBox _autoRenewKimiToken = new();
     private readonly ComboBox _bellSound = new();
+    private readonly ComboBox _bellVisualFeedback = new();
     private readonly ComboBox _lastTabClosedBehavior = new();
     private readonly ComboBox _lastWorkspaceClosedBehavior = new();
     private readonly TabControl _tabs = new();
@@ -513,7 +514,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 8,
             BackColor = SurfaceColor,
             Margin = new Padding(0)
         };
@@ -529,19 +530,26 @@ internal sealed class SettingsForm : Form
         _bellSound.Margin = new Padding(0, 5, 0, 18);
         layout.Controls.Add(_bellSound, 0, 1);
 
-        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 2);
+        layout.Controls.Add(CreateLabel("Visual bell"), 0, 2);
+        ConfigureField(_bellVisualFeedback);
+        _bellVisualFeedback.DropDownStyle = ComboBoxStyle.DropDownList;
+        _bellVisualFeedback.DisplayMember = nameof(BehaviorOption.Label);
+        _bellVisualFeedback.Margin = new Padding(0, 5, 0, 18);
+        layout.Controls.Add(_bellVisualFeedback, 0, 3);
+
+        layout.Controls.Add(CreateLabel("When the last tab in a workspace closes"), 0, 4);
         ConfigureField(_lastTabClosedBehavior);
         _lastTabClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
         _lastTabClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
         _lastTabClosedBehavior.Margin = new Padding(0, 5, 0, 18);
-        layout.Controls.Add(_lastTabClosedBehavior, 0, 3);
+        layout.Controls.Add(_lastTabClosedBehavior, 0, 5);
 
-        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 4);
+        layout.Controls.Add(CreateLabel("When the last workspace closes"), 0, 6);
         ConfigureField(_lastWorkspaceClosedBehavior);
         _lastWorkspaceClosedBehavior.DropDownStyle = ComboBoxStyle.DropDownList;
         _lastWorkspaceClosedBehavior.DisplayMember = nameof(BehaviorOption.Label);
         _lastWorkspaceClosedBehavior.Margin = new Padding(0, 5, 0, 0);
-        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 5);
+        layout.Controls.Add(_lastWorkspaceClosedBehavior, 0, 7);
 
         page.Controls.Add(layout);
         return page;
@@ -664,6 +672,14 @@ internal sealed class SettingsForm : Form
             new BehaviorOption("880–660 Hz", BellSettings.Tone880To660HzSound)
         ]);
         _bellSound.SelectedIndex = 1;
+
+        _bellVisualFeedback.Items.AddRange(
+        [
+            new BehaviorOption("None", BellSettings.NoVisualFeedback),
+            new BehaviorOption("Briefly", BellSettings.BriefVisualFeedback),
+            new BehaviorOption("Until viewed", BellSettings.UntilViewedVisualFeedback)
+        ]);
+        _bellVisualFeedback.SelectedIndex = 1;
     }
 
     private void ApplyValues(AppSettings settings)
@@ -694,6 +710,7 @@ internal sealed class SettingsForm : Form
             _showRemainingUsage.Checked = normalized.Indicators.ShowRemainingUsage;
             _autoRenewKimiToken.Checked = normalized.Indicators.AutoRenewKimiToken;
             SelectBehavior(_bellSound, normalized.Bell.Sound);
+            SelectBehavior(_bellVisualFeedback, normalized.Bell.VisualFeedback);
             SelectBehavior(_lastTabClosedBehavior, normalized.Workspace.LastTabClosedBehavior);
             SelectBehavior(
                 _lastWorkspaceClosedBehavior,
@@ -792,7 +809,9 @@ internal sealed class SettingsForm : Form
     private BellSettings SelectedBellSettings() => new()
     {
         Sound = (_bellSound.SelectedItem as BehaviorOption)?.Value
-            ?? BellSettings.Tone880To660HzSound
+            ?? BellSettings.Tone880To660HzSound,
+        VisualFeedback = (_bellVisualFeedback.SelectedItem as BehaviorOption)?.Value
+            ?? BellSettings.BriefVisualFeedback
     };
 
     private static void SelectBehavior(ComboBox comboBox, string value)
