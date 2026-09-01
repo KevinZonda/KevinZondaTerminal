@@ -1,5 +1,6 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
 using KevinZonda.AgentUsageMonitor;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.WebBridgeProtocol;
 using KevinZonda.Terminal.Configuration;
 using Avalonia.Input;

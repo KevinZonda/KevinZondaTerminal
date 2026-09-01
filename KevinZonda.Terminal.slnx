@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/KevinZonda.AgentUsageMonitor/KevinZonda.AgentUsageMonitor.csproj" />
+  <Project Path="src/KevinZonda.SystemMetrics/KevinZonda.SystemMetrics.csproj" />
   <Project Path="src/KevinZonda.Terminal.AvaloniaDesktop/KevinZonda.Terminal.AvaloniaDesktop.csproj" />
   <Project Path="src/KevinZonda.Terminal.ConPty/KevinZonda.Terminal.ConPty.csproj" />
   <Project Path="src/KevinZonda.Terminal.Core/KevinZonda.Terminal.Core.csproj" />

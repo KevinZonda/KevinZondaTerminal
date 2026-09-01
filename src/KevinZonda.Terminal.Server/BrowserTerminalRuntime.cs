@@ -2,7 +2,7 @@ using System.Text;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.ConPty;
-using KevinZonda.Terminal.Monitoring;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
 using KevinZonda.Terminal.WebBridgeProtocol;
@@ -17,7 +17,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
     private readonly object _sync = new();
     private readonly TerminalSessionManager _sessions;
     private readonly AgentUsageStatusService _agentUsage;
-    private readonly SystemMetricsService _systemMetrics;
+    private readonly ISystemMetricsService _systemMetrics;
     private readonly Dictionary<string, SessionRuntimeState> _sessionStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task<SessionRuntimeState>> _createOperations = new(StringComparer.Ordinal);
     private readonly HashSet<string> _closeOperations = new(StringComparer.Ordinal);

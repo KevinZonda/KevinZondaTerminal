@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.WebBridgeProtocol;
 

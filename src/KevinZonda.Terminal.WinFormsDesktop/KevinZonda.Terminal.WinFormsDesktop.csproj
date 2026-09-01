@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KevinZonda.AgentUsageMonitor\KevinZonda.AgentUsageMonitor.csproj" />
+    <ProjectReference Include="..\KevinZonda.SystemMetrics\KevinZonda.SystemMetrics.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.ConPty\KevinZonda.Terminal.ConPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.RecentWorkspaces\KevinZonda.Terminal.RecentWorkspaces.csproj" />

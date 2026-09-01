@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
@@ -15,7 +16,7 @@ public sealed partial class MainWindow : Window
     private LocalAssetServer? _assetServer;
     private UnixTerminalSessionManager? _sessions;
     private AgentUsageStatusService? _agentUsage;
-    private SystemMetricsService? _systemMetrics;
+    private ISystemMetricsService? _systemMetrics;
     private AvaloniaWebViewBridge? _bridge;
     private SettingsWindow? _settingsWindow;
     private WindowState? _windowStateBeforeFullScreen;

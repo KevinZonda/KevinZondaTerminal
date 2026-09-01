@@ -5,6 +5,7 @@ using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.WebBridgeProtocol;
 using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
@@ -17,7 +18,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     private readonly NativeWebView _webView;
     private readonly UnixTerminalSessionManager _sessions;
     private readonly AgentUsageStatusService _agentUsage;
-    private readonly SystemMetricsService _systemMetrics;
+    private readonly ISystemMetricsService _systemMetrics;
     private readonly MainWindow _owner;
     private readonly string _workingDirectory;
     private readonly SettingsStore _settingsStore = new();
@@ -30,7 +31,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         NativeWebView webView,
         UnixTerminalSessionManager sessions,
         AgentUsageStatusService agentUsage,
-        SystemMetricsService systemMetrics,
+        ISystemMetricsService systemMetrics,
         MainWindow owner,
         string workingDirectory)
     {

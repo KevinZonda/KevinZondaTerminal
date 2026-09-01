@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using KevinZonda.Terminal.Configuration;
-using KevinZonda.Terminal.Monitoring;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
 using KevinZonda.Terminal.WebBridgeProtocol;
@@ -21,7 +21,7 @@ internal sealed class WebViewBridge : IDisposable
     private readonly WebView2 _webView;
     private readonly TerminalSessionManager _sessions;
     private readonly AgentUsageStatusService _agentUsage;
-    private readonly SystemMetricsService _systemMetrics;
+    private readonly ISystemMetricsService _systemMetrics;
     private readonly Action _openSettings;
     private readonly Action _openNewInstance;
     private readonly Action<string> _openExternal;
@@ -35,7 +35,7 @@ internal sealed class WebViewBridge : IDisposable
         WebView2 webView,
         TerminalSessionManager sessions,
         AgentUsageStatusService agentUsage,
-        SystemMetricsService systemMetrics,
+        ISystemMetricsService systemMetrics,
         Action openSettings,
         Action openNewInstance,
         Action<string> openExternal,

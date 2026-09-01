@@ -6,7 +6,7 @@ using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Hosting;
 using KevinZonda.Terminal.Interop;
 using KevinZonda.Terminal.Messaging;
-using KevinZonda.Terminal.Monitoring;
+using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
 using KevinZonda.Terminal.Web;
@@ -28,7 +28,7 @@ internal sealed class MainForm : Form
     private readonly WebView2 _webView;
     private readonly TerminalSessionManager _sessions;
     private readonly AgentUsageStatusService _agentUsage;
-    private readonly SystemMetricsService _systemMetrics;
+    private readonly ISystemMetricsService _systemMetrics;
     private readonly SettingsStore _settingsStore = new();
     private readonly string _startingDirectory;
     private AppSettings _settings;

@@ -1,31 +1,23 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 
-namespace KevinZonda.Terminal.AvaloniaDesktop;
+namespace KevinZonda.SystemMetrics;
 
-internal sealed record SystemMetricsStatus(
-    double? CpuPercent,
-    ulong UsedMemoryBytes,
-    ulong AvailableMemoryBytes,
-    ulong TotalMemoryBytes,
-    DateTimeOffset? UpdatedAt)
-{
-    internal static SystemMetricsStatus Empty { get; } = new(null, 0, 0, 0, null);
-}
-
-internal sealed class SystemMetricsService : IAsyncDisposable
+public sealed class SystemMetricsService : ISystemMetricsService
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(2);
+
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _stateLock = new();
     private SystemMetricsStatus _current = SystemMetricsStatus.Empty;
-    private CpuCounters? _previousCpu;
+    private UnixCpuCounters? _previousUnixCpu;
+    private WindowsCpuTimes? _previousWindowsCpu;
     private Task? _monitorTask;
     private int _disposed;
 
-    internal event Action<SystemMetricsStatus>? StatusChanged;
+    public event Action<SystemMetricsStatus>? StatusChanged;
 
-    internal SystemMetricsStatus Current
+    public SystemMetricsStatus Current
     {
         get
         {
@@ -36,7 +28,7 @@ internal sealed class SystemMetricsService : IAsyncDisposable
         }
     }
 
-    internal void Start()
+    public void Start()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (_monitorTask is not null)
@@ -70,34 +62,7 @@ internal sealed class SystemMetricsService : IAsyncDisposable
             return;
         }
 
-        double? cpuPercent = null;
-        if (TryReadCpu(out var cpu))
-        {
-            lock (_stateLock)
-            {
-                if (_previousCpu is { } previous)
-                {
-                    var idleDelta = CounterDelta(cpu.Idle, previous.Idle, cpu.Is32Bit) +
-                                    CounterDelta(cpu.IoWait, previous.IoWait, cpu.Is32Bit);
-                    var totalDelta = idleDelta +
-                                     CounterDelta(cpu.User, previous.User, cpu.Is32Bit) +
-                                     CounterDelta(cpu.Nice, previous.Nice, cpu.Is32Bit) +
-                                     CounterDelta(cpu.System, previous.System, cpu.Is32Bit) +
-                                     CounterDelta(cpu.Irq, previous.Irq, cpu.Is32Bit) +
-                                     CounterDelta(cpu.SoftIrq, previous.SoftIrq, cpu.Is32Bit) +
-                                     CounterDelta(cpu.Steal, previous.Steal, cpu.Is32Bit);
-                    if (totalDelta > 0)
-                    {
-                        cpuPercent = Math.Clamp(
-                            (double)(totalDelta - Math.Min(idleDelta, totalDelta)) / totalDelta * 100,
-                            0,
-                            100);
-                    }
-                }
-                _previousCpu = cpu;
-            }
-        }
-
+        var cpuPercent = TryReadCpuPercent();
         availableMemory = Math.Min(availableMemory, totalMemory);
         var status = new SystemMetricsStatus(
             cpuPercent,
@@ -112,6 +77,73 @@ internal sealed class SystemMetricsService : IAsyncDisposable
         StatusChanged?.Invoke(status);
     }
 
+    private double? TryReadCpuPercent()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return TryReadWindowsCpuPercent();
+        }
+
+        if (!TryReadUnixCpu(out var cpu))
+        {
+            return null;
+        }
+
+        lock (_stateLock)
+        {
+            double? cpuPercent = null;
+            if (_previousUnixCpu is { } previous)
+            {
+                var idleDelta = CounterDelta(cpu.Idle, previous.Idle, cpu.Is32Bit) +
+                                CounterDelta(cpu.IoWait, previous.IoWait, cpu.Is32Bit);
+                var totalDelta = idleDelta +
+                                 CounterDelta(cpu.User, previous.User, cpu.Is32Bit) +
+                                 CounterDelta(cpu.Nice, previous.Nice, cpu.Is32Bit) +
+                                 CounterDelta(cpu.System, previous.System, cpu.Is32Bit) +
+                                 CounterDelta(cpu.Irq, previous.Irq, cpu.Is32Bit) +
+                                 CounterDelta(cpu.SoftIrq, previous.SoftIrq, cpu.Is32Bit) +
+                                 CounterDelta(cpu.Steal, previous.Steal, cpu.Is32Bit);
+                if (totalDelta > 0)
+                {
+                    cpuPercent = Math.Clamp(
+                        (double)(totalDelta - Math.Min(idleDelta, totalDelta)) / totalDelta * 100,
+                        0,
+                        100);
+                }
+            }
+            _previousUnixCpu = cpu;
+            return cpuPercent;
+        }
+    }
+
+    private double? TryReadWindowsCpuPercent()
+    {
+        if (!GetSystemTimes(out var idle, out var kernel, out var user))
+        {
+            return null;
+        }
+
+        var cpu = new WindowsCpuTimes(idle.Value, kernel.Value + user.Value);
+        lock (_stateLock)
+        {
+            double? cpuPercent = null;
+            if (_previousWindowsCpu is { } previous)
+            {
+                var totalDelta = cpu.Total - previous.Total;
+                var idleDelta = cpu.Idle - previous.Idle;
+                if (totalDelta > 0)
+                {
+                    cpuPercent = Math.Clamp(
+                        (double)(totalDelta - Math.Min(idleDelta, totalDelta)) / totalDelta * 100,
+                        0,
+                        100);
+                }
+            }
+            _previousWindowsCpu = cpu;
+            return cpuPercent;
+        }
+    }
+
     private static ulong CounterDelta(ulong current, ulong previous, bool is32Bit)
     {
         if (current >= previous)
@@ -123,7 +155,7 @@ internal sealed class SystemMetricsService : IAsyncDisposable
             : 0;
     }
 
-    private static bool TryReadCpu(out CpuCounters counters)
+    private static bool TryReadUnixCpu(out UnixCpuCounters counters)
     {
         if (OperatingSystem.IsMacOS())
         {
@@ -140,6 +172,10 @@ internal sealed class SystemMetricsService : IAsyncDisposable
 
     private static bool TryReadMemory(out ulong totalBytes, out ulong availableBytes)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            return TryReadWindowsMemory(out totalBytes, out availableBytes);
+        }
         if (OperatingSystem.IsMacOS())
         {
             return TryReadMacMemory(out totalBytes, out availableBytes);
@@ -154,7 +190,25 @@ internal sealed class SystemMetricsService : IAsyncDisposable
         return false;
     }
 
-    private static bool TryReadLinuxCpu(out CpuCounters counters)
+    private static bool TryReadWindowsMemory(out ulong totalBytes, out ulong availableBytes)
+    {
+        var memory = new WindowsMemoryStatus
+        {
+            Length = (uint)Marshal.SizeOf<WindowsMemoryStatus>()
+        };
+        if (!GlobalMemoryStatusEx(ref memory))
+        {
+            totalBytes = 0;
+            availableBytes = 0;
+            return false;
+        }
+
+        totalBytes = memory.TotalPhysical;
+        availableBytes = memory.AvailablePhysical;
+        return true;
+    }
+
+    private static bool TryReadLinuxCpu(out UnixCpuCounters counters)
     {
         counters = default;
         try
@@ -175,14 +229,17 @@ internal sealed class SystemMetricsService : IAsyncDisposable
             for (var index = 0; index < values.Length; index++)
             {
                 if (index + 1 >= fields.Length ||
-                    !ulong.TryParse(fields[index + 1], NumberStyles.None, CultureInfo.InvariantCulture,
+                    !ulong.TryParse(
+                        fields[index + 1],
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
                         out values[index]))
                 {
                     values[index] = 0;
                 }
             }
 
-            counters = new CpuCounters(
+            counters = new UnixCpuCounters(
                 values[0],
                 values[1],
                 values[2],
@@ -219,7 +276,10 @@ internal sealed class SystemMetricsService : IAsyncDisposable
                 var fields = line[(separator + 1)..]
                     .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
                 if (fields.Length > 0 && ulong.TryParse(
-                        fields[0], NumberStyles.None, CultureInfo.InvariantCulture, out var kibibytes))
+                        fields[0],
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var kibibytes))
                 {
                     values[line[..separator]] = kibibytes * 1024;
                 }
@@ -250,7 +310,7 @@ internal sealed class SystemMetricsService : IAsyncDisposable
     private static ulong ValueOrZero(IReadOnlyDictionary<string, ulong> values, string name) =>
         values.TryGetValue(name, out var value) ? value : 0;
 
-    private static bool TryReadMacCpu(out CpuCounters counters)
+    private static bool TryReadMacCpu(out UnixCpuCounters counters)
     {
         counters = default;
         try
@@ -261,7 +321,7 @@ internal sealed class SystemMetricsService : IAsyncDisposable
                 return false;
             }
 
-            counters = new CpuCounters(
+            counters = new UnixCpuCounters(
                 info.User,
                 info.Nice,
                 info.System,
@@ -335,7 +395,7 @@ internal sealed class SystemMetricsService : IAsyncDisposable
         _lifetime.Dispose();
     }
 
-    private readonly record struct CpuCounters(
+    private readonly record struct UnixCpuCounters(
         ulong User,
         ulong Nice,
         ulong System,
@@ -345,6 +405,31 @@ internal sealed class SystemMetricsService : IAsyncDisposable
         ulong SoftIrq,
         ulong Steal,
         bool Is32Bit);
+
+    private readonly record struct WindowsCpuTimes(ulong Idle, ulong Total);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowsFileTime
+    {
+        internal uint Low;
+        internal uint High;
+
+        internal readonly ulong Value => ((ulong)High << 32) | Low;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowsMemoryStatus
+    {
+        internal uint Length;
+        internal uint MemoryLoad;
+        internal ulong TotalPhysical;
+        internal ulong AvailablePhysical;
+        internal ulong TotalPageFile;
+        internal ulong AvailablePageFile;
+        internal ulong TotalVirtual;
+        internal ulong AvailableVirtual;
+        internal ulong AvailableExtendedVirtual;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct HostCpuLoadInfo
@@ -387,6 +472,17 @@ internal sealed class SystemMetricsService : IAsyncDisposable
     private const string LibSystem = "/usr/lib/libSystem.B.dylib";
     private const int HostCpuLoadInfoFlavor = 3;
     private const int HostVmInfo64Flavor = 4;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemTimes(
+        out WindowsFileTime idleTime,
+        out WindowsFileTime kernelTime,
+        out WindowsFileTime userTime);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalMemoryStatusEx(ref WindowsMemoryStatus buffer);
 
     [DllImport(LibSystem, EntryPoint = "mach_host_self")]
     private static extern uint MachHostSelf();
