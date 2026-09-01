@@ -706,7 +706,7 @@ export class Workspace implements TerminalCallbacks {
           this.executeCommand('newWorkspace');
           break;
         case 'KeyW':
-          this.executeCommand('closePane');
+          this.executeCommand('closeTab');
           break;
         default:
           handled = false;
@@ -762,8 +762,8 @@ export class Workspace implements TerminalCallbacks {
       case 'newWorkspace':
         void this.createWorkspace(true);
         break;
-      case 'closePane':
-        this.closeFocusedPane();
+      case 'closeTab':
+        this.closeFocusedTab();
         break;
     }
   }
@@ -1893,7 +1893,10 @@ export class Workspace implements TerminalCallbacks {
           ?? (workspace.root ? this.firstPaneId(workspace.root) : undefined);
       }
       if (!workspace.root) {
-        await this.createTabInWorkspace(workspace);
+        if (isActiveWorkspace) {
+          this.render();
+        }
+        this.persistResumeState();
         return;
       }
 
@@ -1910,44 +1913,13 @@ export class Workspace implements TerminalCallbacks {
     });
   }
 
-  private closeFocusedPane(): void {
-    const workspace = this.activeWorkspace;
+  private closeFocusedTab(): void {
     const pane = this.focusedPane;
-    if (!workspace || !pane) {
+    if (!pane) {
       return;
     }
 
-    if (workspace.panes.size === 1) {
-      this.closeTerminalTab(pane.id, pane.activeSessionId);
-      return;
-    }
-
-    void this.runExclusive(async () => {
-      const root = workspace.root;
-      if (!root || workspace.id !== this.activeWorkspaceId ||
-          !workspace.panes.has(pane.id)) {
-        return;
-      }
-
-      const nextPaneId = this.findClosestSiblingPaneId(root, pane.id);
-      for (const tab of pane.tabs) {
-        this.destroyTerminal(tab.sessionId);
-        this.bridge.closeSession(tab.sessionId);
-      }
-
-      workspace.panes.delete(pane.id);
-      workspace.root = this.removePaneLeaf(root, pane.id) ?? undefined;
-      workspace.focusedPaneId = nextPaneId
-        ?? (workspace.root ? this.firstPaneId(workspace.root) : undefined);
-      this.render();
-
-      const focused = workspace.focusedPaneId
-        ? workspace.panes.get(workspace.focusedPaneId)
-        : undefined;
-      if (focused) {
-        this.focusSession(focused.activeSessionId);
-      }
-    });
+    this.closeTerminalTab(pane.id, pane.activeSessionId);
   }
 
   private destroyTerminal(sessionId: string): void {
