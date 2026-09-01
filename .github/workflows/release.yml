@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing Git tag to release
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Build Windows
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      source_ref: ${{ inputs.tag || github.ref }}
+
+  linux:
+    name: Build Linux
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      source_ref: ${{ inputs.tag || github.ref }}
+
+  macos:
+    name: Build macOS
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      source_ref: ${{ inputs.tag || github.ref }}
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - windows
+      - linux
+      - macos
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: KevinZonda-Terminal-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            KevinZonda-Terminal-windows-x64.zip
+            KevinZonda-Terminal-linux-x64.tar.gz
+            KevinZonda-Terminal-macos-arm64.zip
+            KevinZonda-Terminal-macos-x64.zip
+          )
+          for asset in "${expected[@]}"; do
+            test -f "release-assets/$asset"
+          done
+          find release-assets -maxdepth 1 -type f -print -exec ls -lh {} \;
+
+      - name: Generate checksums
+        shell: bash
+        working-directory: release-assets
+        run: sha256sum KevinZonda-Terminal-* > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          release-assets/*
+          --verify-tag
+          --generate-notes
+          --notes "The macOS builds are ad-hoc signed and are not notarized. Gatekeeper may require users to open the application explicitly."

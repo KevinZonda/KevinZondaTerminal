@@ -248,12 +248,18 @@ dotnet publish src\KevinZonda.Terminal\KevinZonda.Terminal.csproj -c Release -r 
 
 ## GitHub Actions 构建
 
-推送到 `master`、创建 Pull Request，或在 GitHub Actions 页面手动运行
-`Build Windows executable`，都会在 Windows runner 上构建单文件 win-x64 版本。
-构建成功后，从对应 workflow run 的 **Artifacts** 区下载
-`KevinZonda-Terminal-win-x64-YYYYMMDD-HHmmssZ-<short-hash>.zip`，其中包含
-`KevinZonda.Terminal.exe`、`kterm-server.exe` 和 `kterm-server-launcher.exe`。文件名中的时间戳使用 UTC，hash 为触发构建的 commit
-SHA 前 7 位。
-Artifact 保留 30 天；程序运行时需要 .NET 10 Desktop Runtime 和 WebView2 Runtime。
+推送到 `master`、创建 Pull Request，或在 GitHub Actions 页面手动运行对应 workflow，会分别构建：
+
+- `Build Windows`：`KevinZonda-Terminal-windows-x64.zip`
+- `Build Linux`：`KevinZonda-Terminal-linux-x64.tar.gz`
+- `Build macOS`：`KevinZonda-Terminal-macos-arm64.zip` 和 `KevinZonda-Terminal-macos-x64.zip`
+
+Linux 和 macOS workflow 会运行 Unix PTY 与 Avalonia 桌面服务集成测试。Linux 产物为 self-contained，
+macOS 产物使用 ad-hoc 签名且未经过 Apple notarization；首次打开下载的应用时可能需要在 Finder 中右键选择“打开”。
+
+推送 `v*` tag 或手动运行 `Release` workflow，会复用三个平台的构建 workflow、生成 SHA-256 校验文件，
+并将全部产物发布到对应的 GitHub Release。Windows ZIP 包含
+`KevinZonda.Terminal.exe`、`kterm-server.exe` 和 `kterm-server-launcher.exe`。
+Artifact 保留 30 天；Windows 程序运行时需要 .NET 10 Desktop Runtime 和 WebView2 Runtime。
 
 详细架构、消息协议与验收标准参见 [docs/plan.md](docs/plan.md)。
