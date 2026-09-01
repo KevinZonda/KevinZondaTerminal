@@ -42,6 +42,7 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
     "A non-macOS application shortcut was intercepted.");
 await TestDesktopSettingsStoreAsync();
 TestSourceGeneratedBridgeJson();
+TestTerminalThemeCatalog();
 
 var detected = UnixAgentProcessDetector.DetectSnapshot(
     """
@@ -93,6 +94,20 @@ Console.WriteLine("PASS Unix agent process detection");
 Console.WriteLine("PASS macOS window shortcut mapping");
 Console.WriteLine("PASS Avalonia settings persistence");
 Console.WriteLine("PASS source-generated Avalonia bridge JSON");
+Console.WriteLine("PASS Avalonia terminal theme palettes");
+
+static void TestTerminalThemeCatalog()
+{
+    Require(DesktopTerminalThemeCatalog.All.Count == 7,
+        "The Avalonia terminal theme catalog is incomplete.");
+    foreach (var theme in DesktopTerminalThemeCatalog.All)
+    {
+        Require(theme.AnsiColors.Count == 16,
+            $"Theme '{theme.Name}' does not define a complete ANSI palette.");
+        Require(!string.IsNullOrWhiteSpace(theme.SelectionBackground),
+            $"Theme '{theme.Name}' does not define a selection color.");
+    }
+}
 
 static void TestSourceGeneratedBridgeJson()
 {

@@ -98,6 +98,26 @@
                            FontSize="15"
                            Text="Ready" />
               </StackPanel>
+              <Border x:Name="ThemePreviewSelection"
+                      HorizontalAlignment="Left"
+                      Padding="5,2"
+                      CornerRadius="2">
+                <TextBlock x:Name="ThemePreviewSelectionText"
+                           FontFamily="Menlo, monospace"
+                           FontSize="13"
+                           Text="selected text" />
+              </Border>
+              <StackPanel Spacing="3">
+                <TextBlock Classes="description" Text="ANSI palette" />
+                <ItemsControl x:Name="ThemePreviewPalette"
+                              HorizontalAlignment="Stretch">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <UniformGrid Rows="2" Columns="8" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </StackPanel>
             </StackPanel>
           </Border>
         </Grid>

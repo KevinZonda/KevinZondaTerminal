@@ -19,6 +19,9 @@ internal sealed partial class SettingsWindow : Window
     private readonly TextBlock _themePreviewPrompt;
     private readonly TextBlock _themePreviewOutput;
     private readonly Border _themePreviewCursor;
+    private readonly Border _themePreviewSelection;
+    private readonly TextBlock _themePreviewSelectionText;
+    private readonly ItemsControl _themePreviewPalette;
     private readonly CheckBox _workspaceIndicator;
     private readonly CheckBox _remainingUsage;
     private readonly CheckBox _autoRenewKimi;
@@ -40,6 +43,9 @@ internal sealed partial class SettingsWindow : Window
         _themePreviewPrompt = Find<TextBlock>("ThemePreviewPrompt");
         _themePreviewOutput = Find<TextBlock>("ThemePreviewOutput");
         _themePreviewCursor = Find<Border>("ThemePreviewCursor");
+        _themePreviewSelection = Find<Border>("ThemePreviewSelection");
+        _themePreviewSelectionText = Find<TextBlock>("ThemePreviewSelectionText");
+        _themePreviewPalette = Find<ItemsControl>("ThemePreviewPalette");
         _workspaceIndicator = Find<CheckBox>("WorkspaceIndicatorBox");
         _remainingUsage = Find<CheckBox>("RemainingUsageBox");
         _autoRenewKimi = Find<CheckBox>("AutoRenewKimiBox");
@@ -167,6 +173,20 @@ internal sealed partial class SettingsWindow : Window
         _themePreviewPrompt.Foreground = Brush.Parse(preset.Foreground);
         _themePreviewOutput.Foreground = Brush.Parse(preset.Foreground);
         _themePreviewCursor.Background = Brush.Parse(preset.Cursor);
+        _themePreviewSelection.Background = Brush.Parse(preset.SelectionBackground);
+        _themePreviewSelectionText.Foreground = Brush.Parse(preset.Foreground);
+        _themePreviewPalette.ItemsSource = preset.AnsiColors.Select(CreateColorSwatch).ToArray();
+    }
+
+    private static Border CreateColorSwatch(string color)
+    {
+        var swatch = new Border
+        {
+            Height = 18,
+            Background = Brush.Parse(color)
+        };
+        ToolTip.SetTip(swatch, color);
+        return swatch;
     }
 
     private void HandleRestoreDefaults(object? sender, RoutedEventArgs eventArgs) =>
