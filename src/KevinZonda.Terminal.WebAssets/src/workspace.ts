@@ -648,8 +648,10 @@ export class Workspace implements TerminalCallbacks {
   }
 
   private readonly handleKeyboard = (event: KeyboardEvent): void => {
-    if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey &&
-        event.code === 'KeyN') {
+    const newInstanceModifier = Workspace.USE_META_APPLICATION_SHORTCUTS
+      ? event.metaKey && !event.ctrlKey
+      : event.ctrlKey && !event.metaKey;
+    if (newInstanceModifier && event.shiftKey && !event.altKey && event.code === 'KeyN') {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!event.repeat) {
