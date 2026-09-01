@@ -47,6 +47,10 @@ AVALONIA_SELF_CONTAINED ?= false
 MACOS_BUNDLE_ID ?= com.kevinzonda.terminal
 MACOS_SIGN_IDENTITY ?= -
 MACOS_PUBLISH_TRIMMED ?= true
+MACOS_APP_NAME := KevinZonda Terminal.app
+MACOS_APP_PATH := artifacts/macos/$(AVALONIA_RID)/$(MACOS_APP_NAME)
+MACOS_INSTALL_DIR ?= /Applications
+MACOS_INSTALL_APP := $(MACOS_INSTALL_DIR)/$(MACOS_APP_NAME)
 
 CONFIG ?= Debug
 
@@ -57,7 +61,7 @@ CONFIG ?= Debug
 help:
 	@echo "Available targets:"
 	@echo "  make deps      - restore NuGet and pnpm dependencies"
-	@echo "  make install   - install desktop, Server, and Server Launcher executables"
+	@echo "  make install   - install the macOS app or Windows desktop, Server, and Launcher executables"
 	@echo "  make web       - type-check and build the terminal and Dashboard frontends"
 	@echo "  make dashboard - type-check and build the Server Dashboard frontend"
 	@echo "  make build     - build KevinZonda Terminal; CONFIG=Debug by default"
@@ -92,9 +96,15 @@ deps: restore
 	pnpm --dir $(WEB_DIR) install --frozen-lockfile
 	pnpm --dir $(DASHBOARD_DIR) install --frozen-lockfile
 
+ifeq ($(HOST_OS),Darwin)
+install: app-avalonia
+	/usr/bin/ditto "$(MACOS_APP_PATH)" "$(MACOS_INSTALL_APP)"
+	@echo "Installed $(MACOS_INSTALL_APP)"
+else
 install: publish
 	powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(INSTALL_DIR)' | Out-Null; Copy-Item -Force -LiteralPath '$(PUBLISH_EXE)' -Destination '$(INSTALL_EXE)'; Copy-Item -Force -LiteralPath '$(SERVER_PUBLISH_EXE)' -Destination '$(INSTALL_SERVER_EXE)'; Copy-Item -Force -LiteralPath '$(LAUNCHER_PUBLISH_EXE)' -Destination '$(INSTALL_LAUNCHER_EXE)'"
 	@echo "Installed $(INSTALL_EXE), $(INSTALL_SERVER_EXE), and $(INSTALL_LAUNCHER_EXE)"
+endif
 
 restore:
 	dotnet restore $(SOLUTION) --nologo
