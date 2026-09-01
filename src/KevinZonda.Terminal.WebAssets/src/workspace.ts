@@ -1714,7 +1714,7 @@ export class Workspace implements TerminalCallbacks {
         bell.className = 'pane-tab-bell';
         bell.title = 'Bell rang';
         bell.setAttribute('aria-hidden', 'true');
-        bell.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+        bell.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2m6-6v-5c0-3.1-1.6-5.6-4.5-6.3V4a1.5 1.5 0 0 0-3 0v.7C7.6 5.4 6 7.9 6 11v5l-2 2v1h16v-1z"/></svg>';
         tabElement.append(bell);
       }
       tabElement.append(close);
