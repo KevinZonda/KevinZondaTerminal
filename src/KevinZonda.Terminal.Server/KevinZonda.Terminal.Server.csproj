@@ -14,5 +14,6 @@
     <ProjectReference Include="..\KevinZonda.Terminal.Server.Login\KevinZonda.Terminal.Server.Login.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Server.UserAuth\KevinZonda.Terminal.Server.UserAuth.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
+    <ProjectReference Include="..\KevinZonda.Terminal.WebBridgeProtocol\KevinZonda.Terminal.WebBridgeProtocol.csproj" />
   </ItemGroup>
 </Project>

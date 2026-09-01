@@ -13,7 +13,6 @@
   <ItemGroup>
     <Compile Include="..\KevinZonda.Terminal\Configuration\**\*.cs" Link="Configuration\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\KevinZonda.Terminal\Interop\**\*.cs" Link="Interop\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\KevinZonda.Terminal\Messaging\BridgeMessage.cs" Link="Messaging\BridgeMessage.cs" />
     <Compile Include="..\KevinZonda.Terminal\Monitoring\**\*.cs" Link="Monitoring\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\KevinZonda.Terminal\Terminal\**\*.cs" Link="Terminal\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\KevinZonda.Terminal\Usage\**\*.cs" Link="Usage\%(RecursiveDir)%(Filename)%(Extension)" />

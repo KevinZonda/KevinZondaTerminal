@@ -1,11 +1,11 @@
 using System.Text;
-using System.Text.Json;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.Configuration;
-using KevinZonda.Terminal.Messaging;
 using KevinZonda.Terminal.Monitoring;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
+using KevinZonda.Terminal.WebBridgeProtocol;
+using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
 namespace KevinZonda.Terminal.Server;
 
@@ -81,7 +81,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 }
             }
 
-            client.TryPost("runtime.attached", requestId, payload: new
+            client.TryPost(BridgeMessageTypes.RuntimeAttached, requestId, payload: new
             {
                 runtimeId = Id,
                 epoch,
@@ -112,8 +112,12 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 ReplaySessionLocked(client, state, lastApplied);
             }
 
-            client.TryPost("agentUsage.changed", payload: new { agentUsage = _agentUsage.Current });
-            client.TryPost("systemMetrics.changed", payload: new { systemMetrics = _systemMetrics.Current });
+            client.TryPost(
+                BridgeMessageTypes.AgentUsageChanged,
+                payload: new { agentUsage = _agentUsage.Current });
+            client.TryPost(
+                BridgeMessageTypes.SystemMetricsChanged,
+                payload: new { systemMetrics = _systemMetrics.Current });
         }
 
         if (previousClient is not null && !ReferenceEquals(previousClient, client))
@@ -185,7 +189,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             client = _client;
         }
 
-        client?.TryPost("session.exited", sessionId: sessionId, payload: new
+        client?.TryPost(BridgeMessageTypes.SessionExited, sessionId: sessionId, payload: new
         {
             exitCode = 0,
             failure = "Session closed from the server dashboard.",
@@ -224,8 +228,8 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         EnsureActive(source);
         switch (message.Type)
         {
-            case "app.ready":
-                source.TryPost("app.initialState", message.RequestId, payload: new
+            case BridgeMessageTypes.AppReady:
+                source.TryPost(BridgeMessageTypes.AppInitialState, message.RequestId, payload: new
                 {
                     application = "KevinZonda Terminal Server",
                     version = typeof(BrowserTerminalRuntime).Assembly.GetName().Version?.ToString(),
@@ -236,11 +240,11 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 });
                 break;
 
-            case "session.create":
+            case BridgeMessageTypes.SessionCreate:
                 await CreateSessionAsync(source, message).ConfigureAwait(false);
                 break;
 
-            case "session.input":
+            case BridgeMessageTypes.SessionInput:
                 await WriteInputAsync(
                     RequireSessionId(message),
                     GetInt64(message.Payload, "inputSeq", 0),
@@ -248,7 +252,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                     null).ConfigureAwait(false);
                 break;
 
-            case "session.binaryInput":
+            case BridgeMessageTypes.SessionBinaryInput:
                 await WriteInputAsync(
                     RequireSessionId(message),
                     GetInt64(message.Payload, "inputSeq", 0),
@@ -256,30 +260,30 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                     Convert.FromBase64String(GetString(message.Payload, "data"))).ConfigureAwait(false);
                 break;
 
-            case "session.outputAck":
+            case BridgeMessageTypes.SessionOutputAck:
                 // Render acknowledgements let a live page skip duplicate output on
                 // transient reconnects. Journal data is retained until the browser
                 // has durably committed an xterm checkpoint.
                 break;
 
-            case "session.checkpointAck":
+            case BridgeMessageTypes.SessionCheckpointAck:
                 AcknowledgeCheckpoint(
                     RequireSessionId(message),
                     GetInt64(message.Payload, "outputSeq", 0));
                 break;
 
-            case "session.resize":
+            case BridgeMessageTypes.SessionResize:
                 ResizeSession(
                     RequireSessionId(message),
                     GetInt32(message.Payload, "cols", 80),
                     GetInt32(message.Payload, "rows", 24));
                 break;
 
-            case "session.close":
+            case BridgeMessageTypes.SessionClose:
                 await CloseSessionFromClientAsync(source, message).ConfigureAwait(false);
                 break;
 
-            case "settings.fontSize":
+            case BridgeMessageTypes.SettingsFontSize:
                 _settings = AppSettings.Normalize(
                     _settings with
                     {
@@ -288,17 +292,20 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                             Size = GetDouble(message.Payload, "size", AppSettings.DefaultFontSize)
                         }
                     });
-                source.TryPost("settings.saved", message.RequestId, payload: new { settings = _settings });
+                source.TryPost(
+                    BridgeMessageTypes.SettingsSaved,
+                    message.RequestId,
+                    payload: new { settings = _settings });
                 break;
 
-            case "agentUsage.refresh":
+            case BridgeMessageTypes.AgentUsageRefresh:
                 var provider = GetString(message.Payload, "provider") switch
                 {
                     "codex" => UsageProvider.Codex,
                     "kimi" => UsageProvider.KimiCode,
                     _ => throw new InvalidDataException("Unsupported usage provider.")
                 };
-                source.TryPost("agentUsage.refreshResult", message.RequestId, payload: new
+                source.TryPost(BridgeMessageTypes.AgentUsageRefreshResult, message.RequestId, payload: new
                 {
                     started = _agentUsage.RequestRefresh(provider)
                 });
@@ -353,7 +360,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
 
         lock (_sync)
         {
-            source.TryPost("session.created", message.RequestId, state.SessionId, new
+            source.TryPost(BridgeMessageTypes.SessionCreated, message.RequestId, state.SessionId, new
             {
                 shellName = state.ShellName,
                 processId = state.ProcessId,
@@ -428,7 +435,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
                 }
                 if (inputSeq != state.LastInputSeq + 1)
                 {
-                    _client?.TryPost("session.inputNack", sessionId: sessionId, payload: new
+                    _client?.TryPost(BridgeMessageTypes.SessionInputNack, sessionId: sessionId, payload: new
                     {
                         expectedInputSeq = state.LastInputSeq + 1
                     });
@@ -458,7 +465,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
     }
 
     private void PostInputAckLocked(SessionRuntimeState state) =>
-        _client?.TryPost("session.inputAck", sessionId: state.SessionId, payload: new
+        _client?.TryPost(BridgeMessageTypes.SessionInputAck, sessionId: state.SessionId, payload: new
         {
             inputSeq = state.LastInputSeq
         });
@@ -526,7 +533,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         {
             await _sessions.CloseAsync(sessionId).ConfigureAwait(false);
         }
-        source.TryPost("session.closed", message.RequestId, sessionId, new { operationId });
+        source.TryPost(BridgeMessageTypes.SessionClosed, message.RequestId, sessionId, new { operationId });
     }
 
     private bool RemoveSessionLocked(string sessionId)
@@ -643,7 +650,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         IBrowserTerminalClient? client,
         string sessionId,
         OutputRecord output) =>
-        client?.TryPost("session.output", sessionId: sessionId, payload: new
+        client?.TryPost(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new
         {
             data = output.Data,
             outputSeq = output.Sequence
@@ -656,7 +663,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         {
             return;
         }
-        client?.TryPost("session.exited", sessionId: state.SessionId, payload: new
+        client?.TryPost(BridgeMessageTypes.SessionExited, sessionId: state.SessionId, payload: new
         {
             exitCode = status.ExitCode,
             failure = status.Failure,
@@ -668,7 +675,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
     {
         lock (_sync)
         {
-            _client?.TryPost("agentUsage.changed", payload: new { agentUsage = status });
+            _client?.TryPost(BridgeMessageTypes.AgentUsageChanged, payload: new { agentUsage = status });
         }
     }
 
@@ -676,7 +683,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
     {
         lock (_sync)
         {
-            _client?.TryPost("systemMetrics.changed", payload: new { systemMetrics = status });
+            _client?.TryPost(BridgeMessageTypes.SystemMetricsChanged, payload: new { systemMetrics = status });
         }
     }
 
@@ -740,43 +747,6 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         await _systemMetrics.DisposeAsync().ConfigureAwait(false);
         await _sessions.DisposeAsync().ConfigureAwait(false);
     }
-
-    private static string RequireSessionId(BridgeMessage message)
-    {
-        if (string.IsNullOrWhiteSpace(message.SessionId))
-        {
-            throw new InvalidDataException("The message is missing a session ID.");
-        }
-        return message.SessionId;
-    }
-
-    private static string GetString(JsonElement payload, string propertyName) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.ValueKind == JsonValueKind.String
-            ? property.GetString() ?? string.Empty
-            : string.Empty;
-
-    private static int GetInt32(JsonElement payload, string propertyName, int defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetInt32(out var value)
-            ? value
-            : defaultValue;
-
-    private static long GetInt64(JsonElement payload, string propertyName, long defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetInt64(out var value)
-            ? value
-            : defaultValue;
-
-    private static double GetDouble(JsonElement payload, string propertyName, double defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetDouble(out var value)
-            ? value
-            : defaultValue;
 
     private sealed class SessionRuntimeState
     {

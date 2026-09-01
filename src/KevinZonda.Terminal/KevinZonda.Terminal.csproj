@@ -35,12 +35,12 @@
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.RecentWorkspaces\KevinZonda.Terminal.RecentWorkspaces.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
+    <ProjectReference Include="..\KevinZonda.Terminal.WebBridgeProtocol\KevinZonda.Terminal.WebBridgeProtocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Configuration\**\*.cs" />
     <Compile Remove="Interop\**\*.cs" />
-    <Compile Remove="Messaging\BridgeMessage.cs" />
     <Compile Remove="Monitoring\**\*.cs" />
     <Compile Remove="Terminal\**\*.cs" />
     <Compile Remove="Usage\**\*.cs" />

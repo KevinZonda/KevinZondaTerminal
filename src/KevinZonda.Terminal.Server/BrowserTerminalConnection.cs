@@ -2,7 +2,8 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using KevinZonda.Terminal.Messaging;
+using KevinZonda.Terminal.WebBridgeProtocol;
+using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
 namespace KevinZonda.Terminal.Server;
 
@@ -102,7 +103,7 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
 
         Volatile.Write(ref _replacementClose, 1);
         if (!TryPostCore(
-                "runtime.replaced",
+                BridgeMessageTypes.RuntimeReplaced,
                 requestId: null,
                 sessionId: null,
                 payload: new { },
@@ -127,14 +128,11 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             return false;
         }
 
-        var json = JsonSerializer.Serialize(new
-        {
-            version = 1,
+        var json = BridgeProtocol.Serialize(
             type,
             requestId,
             sessionId,
-            payload = payload ?? new { }
-        }, JsonOptions);
+            writer => JsonSerializer.Serialize(writer, payload ?? new { }, JsonOptions));
         var byteCount = Encoding.UTF8.GetByteCount(json);
         if (Interlocked.Add(ref _queuedBytes, byteCount) > MaximumQueuedBytes)
         {
@@ -182,15 +180,10 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             BridgeMessage? message = null;
             try
             {
-                message = JsonSerializer.Deserialize<BridgeMessage>(
-                    messageBuffer.GetBuffer().AsSpan(0, (int)messageBuffer.Length),
-                    JsonOptions);
-                if (message is null || message.Version != 1 || string.IsNullOrWhiteSpace(message.Type))
-                {
-                    throw new InvalidDataException("Unsupported bridge message.");
-                }
+                message = BridgeProtocol.Deserialize(
+                    messageBuffer.GetBuffer().AsSpan(0, (int)messageBuffer.Length));
 
-                if (message.Type == "runtime.attach")
+                if (message.Type == BridgeMessageTypes.RuntimeAttach)
                 {
                     AttachRuntime(message);
                 }
@@ -205,7 +198,7 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                TryPost("session.error", message?.RequestId, message?.SessionId, new
+                TryPost(BridgeMessageTypes.SessionError, message?.RequestId, message?.SessionId, new
                 {
                     message = exception.Message
                 });
@@ -286,20 +279,6 @@ internal sealed class BrowserTerminalConnection : IBrowserTerminalClient
             _connectionLifetime?.Cancel();
         }
     }
-
-    private static string GetString(JsonElement payload, string propertyName) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.ValueKind == JsonValueKind.String
-            ? property.GetString() ?? string.Empty
-            : string.Empty;
-
-    private static long GetInt64(JsonElement payload, string propertyName, long defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetInt64(out var value)
-            ? value
-            : defaultValue;
 
     private sealed record OutboundFrame(string Json, int ByteCount, bool CloseAfterSend);
 }

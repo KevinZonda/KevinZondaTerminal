@@ -1,20 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using KevinZonda.Terminal.WebBridgeProtocol;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
-
-internal sealed record BridgeOutboundMessage
-{
-    public int Version { get; init; } = 1;
-
-    public required string Type { get; init; }
-
-    public string? RequestId { get; init; }
-
-    public string? SessionId { get; init; }
-
-    public BridgePayload Payload { get; init; } = new();
-}
 
 internal sealed record BridgePayload
 {
@@ -59,31 +47,30 @@ internal sealed record BridgePayload
 }
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
-[JsonSerializable(typeof(BridgeMessage))]
-[JsonSerializable(typeof(BridgeOutboundMessage))]
-[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(BridgePayload))]
 internal sealed partial class BridgeJsonContext : JsonSerializerContext;
 
 internal static class BridgeJson
 {
-    internal static BridgeMessage? Deserialize(string value) =>
-        JsonSerializer.Deserialize(value, BridgeJsonContext.Default.BridgeMessage);
+    internal static BridgeMessage Deserialize(string value) =>
+        BridgeProtocol.Deserialize(value);
 
     internal static string Serialize(
         string type,
         string? requestId = null,
         string? sessionId = null,
-        BridgePayload? payload = null) =>
-        JsonSerializer.Serialize(
-            new BridgeOutboundMessage
-            {
-                Type = type,
-                RequestId = requestId,
-                SessionId = sessionId,
-                Payload = payload ?? new BridgePayload()
-            },
-            BridgeJsonContext.Default.BridgeOutboundMessage);
+        BridgePayload? payload = null)
+    {
+        return BridgeProtocol.Serialize(
+            type,
+            requestId,
+            sessionId,
+            writer => JsonSerializer.Serialize(
+                writer,
+                payload ?? new BridgePayload(),
+                BridgeJsonContext.Default.BridgePayload));
+    }
 
     internal static string QuoteForJavaScript(string value) =>
-        JsonSerializer.Serialize(value, BridgeJsonContext.Default.String);
+        BridgeProtocol.QuoteForJavaScript(value);
 }

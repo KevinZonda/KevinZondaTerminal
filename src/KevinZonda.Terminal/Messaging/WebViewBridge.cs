@@ -5,8 +5,10 @@ using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Monitoring;
 using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.Usage;
+using KevinZonda.Terminal.WebBridgeProtocol;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
 namespace KevinZonda.Terminal.Messaging;
 
@@ -64,15 +66,15 @@ internal sealed class WebViewBridge : IDisposable
     }
 
     internal void NotifyRuntimeFailure(string kind) =>
-        Post("app.runtimeFailed", payload: new { kind });
+        Post(BridgeMessageTypes.AppRuntimeFailed, payload: new { kind });
 
     internal void SendWorkspaceCommand(string command) =>
-        Post("workspace.command", payload: new { command });
+        Post(BridgeMessageTypes.WorkspaceCommand, payload: new { command });
 
     internal void SendSettingsChanged(AppSettings settings)
     {
         _settings = settings;
-        Post("app.settingsChanged", payload: new { settings });
+        Post(BridgeMessageTypes.AppSettingsChanged, payload: new { settings });
     }
 
     private async void HandleMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
@@ -81,16 +83,12 @@ internal sealed class WebViewBridge : IDisposable
 
         try
         {
-            message = JsonSerializer.Deserialize<BridgeMessage>(eventArgs.WebMessageAsJson, JsonOptions);
-            if (message is null || message.Version != 1 || string.IsNullOrWhiteSpace(message.Type))
-            {
-                throw new InvalidDataException("Unsupported bridge message.");
-            }
+            message = BridgeProtocol.Deserialize(eventArgs.WebMessageAsJson);
 
             switch (message.Type)
             {
-                case "app.ready":
-                    Post("app.initialState", message.RequestId, payload: new
+                case BridgeMessageTypes.AppReady:
+                    Post(BridgeMessageTypes.AppInitialState, message.RequestId, payload: new
                     {
                         application = "KevinZonda Terminal",
                         version = Application.ProductVersion,
@@ -100,41 +98,41 @@ internal sealed class WebViewBridge : IDisposable
                     });
                     break;
 
-                case "session.create":
+                case BridgeMessageTypes.SessionCreate:
                     await CreateSession(message);
                     break;
 
-                case "session.input":
+                case BridgeMessageTypes.SessionInput:
                     await _sessions.WriteAsync(
                         RequireSessionId(message),
                         GetString(message.Payload, "data"));
                     break;
 
-                case "session.binaryInput":
+                case BridgeMessageTypes.SessionBinaryInput:
                     await _sessions.WriteAsync(
                         RequireSessionId(message),
                         Convert.FromBase64String(GetString(message.Payload, "data")));
                     break;
 
-                case "session.resize":
+                case BridgeMessageTypes.SessionResize:
                     _sessions.Resize(
                         RequireSessionId(message),
                         GetInt32(message.Payload, "cols", 80),
                         GetInt32(message.Payload, "rows", 24));
                     break;
 
-                case "session.close":
+                case BridgeMessageTypes.SessionClose:
                     await _sessions.CloseAsync(RequireSessionId(message));
                     break;
 
-                case "clipboard.read":
-                    Post("clipboard.value", message.RequestId, payload: new
+                case BridgeMessageTypes.ClipboardRead:
+                    Post(BridgeMessageTypes.ClipboardValue, message.RequestId, payload: new
                     {
                         text = Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty
                     });
                     break;
 
-                case "clipboard.write":
+                case BridgeMessageTypes.ClipboardWrite:
                     var text = GetString(message.Payload, "text");
                     if (!string.IsNullOrEmpty(text))
                     {
@@ -142,24 +140,24 @@ internal sealed class WebViewBridge : IDisposable
                     }
                     break;
 
-                case "window.settings":
+                case BridgeMessageTypes.WindowSettings:
                     _webView.BeginInvoke(_openSettings);
                     break;
 
-                case "window.newInstance":
+                case BridgeMessageTypes.WindowNewInstance:
                     _webView.BeginInvoke(_openNewInstance);
                     break;
 
-                case "window.openExternal":
+                case BridgeMessageTypes.WindowOpenExternal:
                     _openExternal(GetString(message.Payload, "uri"));
                     break;
 
-                case "settings.fontSize":
+                case BridgeMessageTypes.SettingsFontSize:
                     _settings = await _saveFontSize(GetDouble(message.Payload, "size", 14));
-                    Post("settings.saved", message.RequestId, payload: new { settings = _settings });
+                    Post(BridgeMessageTypes.SettingsSaved, message.RequestId, payload: new { settings = _settings });
                     break;
 
-                case "agentUsage.refresh":
+                case BridgeMessageTypes.AgentUsageRefresh:
                     var provider = GetString(message.Payload, "provider") switch
                     {
                         "codex" => KevinZonda.AgentUsageMonitor.UsageProvider.Codex,
@@ -167,7 +165,7 @@ internal sealed class WebViewBridge : IDisposable
                         _ => throw new InvalidDataException("Unsupported usage provider.")
                     };
                     Post(
-                        "agentUsage.refreshResult",
+                        BridgeMessageTypes.AgentUsageRefreshResult,
                         message.RequestId,
                         payload: new { started = _agentUsage.RequestRefresh(provider) });
                     break;
@@ -179,7 +177,7 @@ internal sealed class WebViewBridge : IDisposable
         catch (Exception exception)
         {
             Post(
-                "session.error",
+                BridgeMessageTypes.SessionError,
                 message?.RequestId,
                 message?.SessionId,
                 new { message = exception.Message });
@@ -192,7 +190,7 @@ internal sealed class WebViewBridge : IDisposable
             GetInt32(message.Payload, "cols", 80),
             GetInt32(message.Payload, "rows", 24));
 
-        Post("session.created", message.RequestId, session.Id, new
+        Post(BridgeMessageTypes.SessionCreated, message.RequestId, session.Id, new
         {
             shellName = session.ShellName,
             processId = session.ProcessId
@@ -221,7 +219,7 @@ internal sealed class WebViewBridge : IDisposable
             _webView.BeginInvoke(() =>
             {
                 FlushSessionOutput(sessionId, drain: true);
-                Post("session.exited", sessionId: sessionId, payload: new
+                Post(BridgeMessageTypes.SessionExited, sessionId: sessionId, payload: new
                 {
                     exitCode = status.ExitCode,
                     failure = status.Failure
@@ -242,7 +240,8 @@ internal sealed class WebViewBridge : IDisposable
 
         try
         {
-            _webView.BeginInvoke(() => Post("agentUsage.changed", payload: new { agentUsage = status }));
+            _webView.BeginInvoke(() =>
+                Post(BridgeMessageTypes.AgentUsageChanged, payload: new { agentUsage = status }));
         }
         catch (InvalidOperationException)
         {
@@ -258,7 +257,8 @@ internal sealed class WebViewBridge : IDisposable
 
         try
         {
-            _webView.BeginInvoke(() => Post("systemMetrics.changed", payload: new { systemMetrics = status }));
+            _webView.BeginInvoke(() =>
+                Post(BridgeMessageTypes.SystemMetricsChanged, payload: new { systemMetrics = status }));
         }
         catch (InvalidOperationException)
         {
@@ -290,7 +290,7 @@ internal sealed class WebViewBridge : IDisposable
 
             if (builder.Length > 0)
             {
-                Post("session.output", sessionId: sessionId, payload: new { data = builder.ToString() });
+                Post(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new { data = builder.ToString() });
             }
         } while (drain && !queue.IsEmpty);
 
@@ -311,61 +311,12 @@ internal sealed class WebViewBridge : IDisposable
             return;
         }
 
-        var json = JsonSerializer.Serialize(new
-        {
-            version = 1,
+        var json = BridgeProtocol.Serialize(
             type,
             requestId,
             sessionId,
-            payload = payload ?? new { }
-        }, JsonOptions);
+            writer => JsonSerializer.Serialize(writer, payload ?? new { }, JsonOptions));
         _webView.CoreWebView2.PostWebMessageAsJson(json);
-    }
-
-    private static string RequireSessionId(BridgeMessage message)
-    {
-        if (string.IsNullOrWhiteSpace(message.SessionId))
-        {
-            throw new InvalidDataException("The message is missing a session ID.");
-        }
-
-        return message.SessionId;
-    }
-
-    private static string GetString(JsonElement payload, string propertyName)
-    {
-        if (payload.ValueKind == JsonValueKind.Object &&
-            payload.TryGetProperty(propertyName, out var property) &&
-            property.ValueKind == JsonValueKind.String)
-        {
-            return property.GetString() ?? string.Empty;
-        }
-
-        return string.Empty;
-    }
-
-    private static int GetInt32(JsonElement payload, string propertyName, int defaultValue)
-    {
-        if (payload.ValueKind == JsonValueKind.Object &&
-            payload.TryGetProperty(propertyName, out var property) &&
-            property.TryGetInt32(out var value))
-        {
-            return value;
-        }
-
-        return defaultValue;
-    }
-
-    private static double GetDouble(JsonElement payload, string propertyName, double defaultValue)
-    {
-        if (payload.ValueKind == JsonValueKind.Object &&
-            payload.TryGetProperty(propertyName, out var property) &&
-            property.TryGetDouble(out var value))
-        {
-            return value;
-        }
-
-        return defaultValue;
     }
 
     public void Dispose()

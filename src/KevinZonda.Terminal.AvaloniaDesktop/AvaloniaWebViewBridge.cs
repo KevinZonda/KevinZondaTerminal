@@ -2,10 +2,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
-using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
+using KevinZonda.Terminal.WebBridgeProtocol;
+using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
 
@@ -58,15 +59,11 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         try
         {
             message = BridgeJson.Deserialize(eventArgs.Body ?? string.Empty);
-            if (message is null || message.Version != 1 || string.IsNullOrWhiteSpace(message.Type))
-            {
-                throw new InvalidDataException("Unsupported bridge message.");
-            }
 
             switch (message.Type)
             {
-                case "app.ready":
-                    Post("app.initialState", message.RequestId, payload: new BridgePayload
+                case BridgeMessageTypes.AppReady:
+                    Post(BridgeMessageTypes.AppInitialState, message.RequestId, payload: new BridgePayload
                     {
                         Application = "KevinZonda Terminal",
                         Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.1.0",
@@ -76,36 +73,36 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     });
                     break;
 
-                case "session.create":
+                case BridgeMessageTypes.SessionCreate:
                     await CreateSessionAsync(message);
                     break;
 
-                case "session.input":
+                case BridgeMessageTypes.SessionInput:
                     await _sessions.WriteAsync(
                         RequireSessionId(message),
                         GetString(message.Payload, "data"));
                     break;
 
-                case "session.binaryInput":
+                case BridgeMessageTypes.SessionBinaryInput:
                     await _sessions.WriteAsync(
                         RequireSessionId(message),
                         Convert.FromBase64String(GetString(message.Payload, "data")));
                     break;
 
-                case "session.resize":
+                case BridgeMessageTypes.SessionResize:
                     await _sessions.ResizeAsync(
                         RequireSessionId(message),
                         GetInt32(message.Payload, "cols", 80),
                         GetInt32(message.Payload, "rows", 24));
                     break;
 
-                case "session.close":
+                case BridgeMessageTypes.SessionClose:
                     await _sessions.CloseAsync(RequireSessionId(message));
                     break;
 
-                case "clipboard.read":
+                case BridgeMessageTypes.ClipboardRead:
                     var clipboard = TopLevel.GetTopLevel(_webView)?.Clipboard;
-                    Post("clipboard.value", message.RequestId, payload: new BridgePayload
+                    Post(BridgeMessageTypes.ClipboardValue, message.RequestId, payload: new BridgePayload
                     {
                         Text = clipboard is null
                             ? string.Empty
@@ -113,7 +110,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     });
                     break;
 
-                case "clipboard.write":
+                case BridgeMessageTypes.ClipboardWrite:
                     var clipboardText = GetString(message.Payload, "text");
                     var targetClipboard = TopLevel.GetTopLevel(_webView)?.Clipboard;
                     if (targetClipboard is not null && clipboardText.Length > 0)
@@ -122,29 +119,29 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     }
                     break;
 
-                case "window.settings":
+                case BridgeMessageTypes.WindowSettings:
                     await ShowSettingsAsync();
                     break;
 
-                case "window.newInstance":
+                case BridgeMessageTypes.WindowNewInstance:
                     LaunchNewInstance();
                     break;
 
-                case "window.openExternal":
+                case BridgeMessageTypes.WindowOpenExternal:
                     OpenExternal(GetString(message.Payload, "uri"));
                     break;
 
-                case "settings.fontSize":
+                case BridgeMessageTypes.SettingsFontSize:
                     _settings = await _settingsStore.SaveFontSizeAsync(
                         _settings,
                         GetDouble(message.Payload, "size", 14));
-                    Post("settings.saved", message.RequestId, payload: new BridgePayload
+                    Post(BridgeMessageTypes.SettingsSaved, message.RequestId, payload: new BridgePayload
                     {
                         Settings = _settings
                     });
                     break;
 
-                case "agentUsage.refresh":
+                case BridgeMessageTypes.AgentUsageRefresh:
                     var provider = GetString(message.Payload, "provider") switch
                     {
                         "codex" => KevinZonda.AgentUsageMonitor.UsageProvider.Codex,
@@ -152,7 +149,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                         _ => throw new InvalidDataException("Unsupported usage provider.")
                     };
                     Post(
-                        "agentUsage.refreshResult",
+                        BridgeMessageTypes.AgentUsageRefreshResult,
                         message.RequestId,
                         payload: new BridgePayload
                         {
@@ -167,7 +164,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         catch (Exception exception)
         {
             Post(
-                "session.error",
+                BridgeMessageTypes.SessionError,
                 message?.RequestId,
                 message?.SessionId,
                 new BridgePayload { Message = exception.Message });
@@ -179,7 +176,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         var session = await _sessions.CreateAsync(
             GetInt32(message.Payload, "cols", 80),
             GetInt32(message.Payload, "rows", 24));
-        Post("session.created", message.RequestId, session.Id, new BridgePayload
+        Post(BridgeMessageTypes.SessionCreated, message.RequestId, session.Id, new BridgePayload
         {
             ShellName = session.ShellName,
             ProcessId = session.ProcessId
@@ -205,7 +202,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         }
 
         _agentUsage.UpdateSettings(_settings);
-        Post("app.settingsChanged", payload: new BridgePayload { Settings = _settings });
+        Post(BridgeMessageTypes.AppSettingsChanged, payload: new BridgePayload { Settings = _settings });
     }
 
     private void QueueOutput(string sessionId, string data)
@@ -226,7 +223,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         Dispatcher.UIThread.Post(() =>
         {
             FlushSessionOutput(sessionId, drain: true);
-            Post("session.exited", sessionId: sessionId, payload: new BridgePayload
+            Post(BridgeMessageTypes.SessionExited, sessionId: sessionId, payload: new BridgePayload
             {
                 ExitCode = exitCode,
                 Failure = failure ?? (signal is null ? null : $"Terminated by signal {signal}.")
@@ -238,7 +235,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     {
         if (Volatile.Read(ref _disposed) == 0)
         {
-            Post("systemMetrics.changed", payload: new BridgePayload { SystemMetrics = status });
+            Post(BridgeMessageTypes.SystemMetricsChanged, payload: new BridgePayload { SystemMetrics = status });
         }
     }
 
@@ -246,7 +243,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     {
         if (Volatile.Read(ref _disposed) == 0)
         {
-            Post("agentUsage.changed", payload: new BridgePayload { AgentUsage = status });
+            Post(BridgeMessageTypes.AgentUsageChanged, payload: new BridgePayload { AgentUsage = status });
         }
     }
 
@@ -274,7 +271,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
             }
             if (builder.Length > 0)
             {
-                Post("session.output", sessionId: sessionId, payload: new BridgePayload
+                Post(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new BridgePayload
                 {
                     Data = builder.ToString()
                 });
@@ -340,32 +337,6 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
 
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
     }
-
-    private static string RequireSessionId(BridgeMessage message) =>
-        string.IsNullOrWhiteSpace(message.SessionId)
-            ? throw new InvalidDataException("The message is missing a session ID.")
-            : message.SessionId;
-
-    private static string GetString(JsonElement payload, string propertyName) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.ValueKind == JsonValueKind.String
-            ? property.GetString() ?? string.Empty
-            : string.Empty;
-
-    private static int GetInt32(JsonElement payload, string propertyName, int defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetInt32(out var value)
-            ? value
-            : defaultValue;
-
-    private static double GetDouble(JsonElement payload, string propertyName, double defaultValue) =>
-        payload.ValueKind == JsonValueKind.Object &&
-        payload.TryGetProperty(propertyName, out var property) &&
-        property.TryGetDouble(out var value)
-            ? value
-            : defaultValue;
 
     public void Dispose()
     {

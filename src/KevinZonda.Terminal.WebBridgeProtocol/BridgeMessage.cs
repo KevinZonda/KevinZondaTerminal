@@ -1,8 +1,8 @@
 using System.Text.Json;
 
-namespace KevinZonda.Terminal.AvaloniaDesktop;
+namespace KevinZonda.Terminal.WebBridgeProtocol;
 
-internal sealed class BridgeMessage
+public sealed class BridgeMessage
 {
     public int Version { get; init; }
 

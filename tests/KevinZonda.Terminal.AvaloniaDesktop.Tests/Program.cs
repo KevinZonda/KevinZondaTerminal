@@ -1,5 +1,6 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
 using KevinZonda.AgentUsageMonitor;
+using KevinZonda.Terminal.WebBridgeProtocol;
 using Avalonia.Input;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -93,7 +94,7 @@ Console.WriteLine(
 Console.WriteLine("PASS Unix agent process detection");
 Console.WriteLine("PASS macOS window shortcut mapping");
 Console.WriteLine("PASS Avalonia settings persistence");
-Console.WriteLine("PASS source-generated Avalonia bridge JSON");
+Console.WriteLine("PASS shared Web bridge protocol");
 Console.WriteLine("PASS Avalonia terminal theme palettes");
 
 static void TestTerminalThemeCatalog()
@@ -118,23 +119,23 @@ static void TestSourceGeneratedBridgeJson()
     Require(inbound is
     {
         Version: 1,
-        Type: "session.resize",
+        Type: BridgeMessageTypes.SessionResize,
         RequestId: "req-1",
         SessionId: "pty-1"
     }, "The source-generated bridge deserializer changed the inbound protocol.");
-    Require(inbound.Payload.GetProperty("cols").GetInt32() == 120,
+    Require(BridgePayloadReader.GetInt32(inbound.Payload, "cols", 80) == 120,
         "The source-generated bridge deserializer lost the payload.");
 
     var outbound = BridgeJson.Serialize(
-        "session.created",
+        BridgeMessageTypes.SessionCreated,
         "req-2",
         "pty-2",
         new BridgePayload { ShellName = "zsh", ProcessId = 42 });
     using var document = JsonDocument.Parse(outbound);
     var root = document.RootElement;
-    Require(root.GetProperty("version").GetInt32() == 1,
+    Require(root.GetProperty("version").GetInt32() == BridgeProtocol.CurrentVersion,
         "The source-generated bridge serializer lost the protocol version.");
-    Require(root.GetProperty("type").GetString() == "session.created",
+    Require(root.GetProperty("type").GetString() == BridgeMessageTypes.SessionCreated,
         "The source-generated bridge serializer changed the event type.");
     var payload = root.GetProperty("payload");
     Require(payload.GetProperty("shellName").GetString() == "zsh"
@@ -144,8 +145,25 @@ static void TestSourceGeneratedBridgeJson()
         "The bridge serializer emitted unrelated nullable payload fields.");
 
     var quoted = BridgeJson.QuoteForJavaScript(outbound);
-    Require(JsonSerializer.Deserialize(quoted, BridgeJsonContext.Default.String) == outbound,
+    using var quotedDocument = JsonDocument.Parse(quoted);
+    Require(quotedDocument.RootElement.GetString() == outbound,
         "The bridge JSON was not safely quoted for JavaScript.");
+
+    using var emptyDocument = JsonDocument.Parse(
+        BridgeProtocol.Serialize(BridgeMessageTypes.AppReady));
+    Require(emptyDocument.RootElement.GetProperty("requestId").ValueKind == JsonValueKind.Null &&
+            emptyDocument.RootElement.GetProperty("sessionId").ValueKind == JsonValueKind.Null &&
+            emptyDocument.RootElement.GetProperty("payload").ValueKind == JsonValueKind.Object,
+        "The shared bridge envelope changed its empty-message shape.");
+
+    try
+    {
+        BridgeProtocol.Deserialize("""{"version":2,"type":"app.ready","payload":{}}""");
+        throw new InvalidOperationException("An unsupported bridge version was accepted.");
+    }
+    catch (InvalidDataException)
+    {
+    }
 }
 
 static async Task TestDesktopSettingsStoreAsync()
