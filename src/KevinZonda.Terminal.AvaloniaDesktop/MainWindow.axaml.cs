@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using KevinZonda.AgentUsageMonitor;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 
@@ -15,7 +16,7 @@ public sealed partial class MainWindow : Window
     private NativeWebView _webView = null!;
     private LocalAssetServer? _assetServer;
     private UnixTerminalSessionManager? _sessions;
-    private AgentUsageStatusService? _agentUsage;
+    private IAgentUsageMonitorService? _agentUsage;
     private ISystemMetricsService? _systemMetrics;
     private AvaloniaWebViewBridge? _bridge;
     private SettingsWindow? _settingsWindow;
@@ -37,6 +38,11 @@ public sealed partial class MainWindow : Window
         Opened += HandleOpened;
         Closing += HandleClosing;
     }
+
+    private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
+    {
+        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+    };
 
     private void InitializeComponent()
     {
@@ -166,9 +172,10 @@ public sealed partial class MainWindow : Window
         {
             _assetServer = await LocalAssetServer.StartAsync();
             _sessions = new UnixTerminalSessionManager(_workingDirectory);
-            _agentUsage = new AgentUsageStatusService(
-                _sessions,
-                new SettingsStore().Load());
+            var settings = new SettingsStore().Load();
+            _agentUsage = new AgentUsageMonitorService(
+                _sessions.GetSessionProcessIds,
+                CreateAgentUsageOptions(settings));
             _systemMetrics = new SystemMetricsService();
             _systemMetrics.Start();
             _bridge = new AvaloniaWebViewBridge(

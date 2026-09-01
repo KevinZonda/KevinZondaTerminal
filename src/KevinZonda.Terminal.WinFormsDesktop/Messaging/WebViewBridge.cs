@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Terminal;
-using KevinZonda.Terminal.Usage;
 using KevinZonda.Terminal.WebBridgeProtocol;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -20,7 +20,7 @@ internal sealed class WebViewBridge : IDisposable
 
     private readonly WebView2 _webView;
     private readonly TerminalSessionManager _sessions;
-    private readonly AgentUsageStatusService _agentUsage;
+    private readonly IAgentUsageMonitorService _agentUsage;
     private readonly ISystemMetricsService _systemMetrics;
     private readonly Action _openSettings;
     private readonly Action _openNewInstance;
@@ -34,7 +34,7 @@ internal sealed class WebViewBridge : IDisposable
     internal WebViewBridge(
         WebView2 webView,
         TerminalSessionManager sessions,
-        AgentUsageStatusService agentUsage,
+        IAgentUsageMonitorService agentUsage,
         ISystemMetricsService systemMetrics,
         Action openSettings,
         Action openNewInstance,

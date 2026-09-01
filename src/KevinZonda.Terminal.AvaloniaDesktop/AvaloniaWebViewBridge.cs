@@ -5,6 +5,7 @@ using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
+using KevinZonda.AgentUsageMonitor;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.WebBridgeProtocol;
@@ -17,7 +18,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     private const int MaxOutputBatchChars = 64 * 1024;
     private readonly NativeWebView _webView;
     private readonly UnixTerminalSessionManager _sessions;
-    private readonly AgentUsageStatusService _agentUsage;
+    private readonly IAgentUsageMonitorService _agentUsage;
     private readonly ISystemMetricsService _systemMetrics;
     private readonly MainWindow _owner;
     private readonly string _workingDirectory;
@@ -30,7 +31,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     internal AvaloniaWebViewBridge(
         NativeWebView webView,
         UnixTerminalSessionManager sessions,
-        AgentUsageStatusService agentUsage,
+        IAgentUsageMonitorService agentUsage,
         ISystemMetricsService systemMetrics,
         MainWindow owner,
         string workingDirectory)
@@ -54,6 +55,11 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         _outputTimer.Tick += FlushOutput;
         _outputTimer.Start();
     }
+
+    private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
+    {
+        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+    };
 
     private async void HandleMessage(object? sender, WebMessageReceivedEventArgs eventArgs)
     {
@@ -203,7 +209,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
             return;
         }
 
-        _agentUsage.UpdateSettings(_settings);
+        _agentUsage.UpdateOptions(CreateAgentUsageOptions(_settings));
         Post(BridgeMessageTypes.AppSettingsChanged, payload: new BridgePayload { Settings = _settings });
     }
 

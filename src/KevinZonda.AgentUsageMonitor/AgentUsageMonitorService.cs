@@ -1,21 +1,18 @@
-using KevinZonda.AgentUsageMonitor;
 using KevinZonda.AgentUsageMonitor.Codex;
 using KevinZonda.AgentUsageMonitor.KimiCode;
-using KevinZonda.Terminal.Configuration;
-using KevinZonda.Terminal.Terminal;
+using KevinZonda.AgentUsageMonitor.ProcessDetection;
 
-namespace KevinZonda.Terminal.Usage;
+namespace KevinZonda.AgentUsageMonitor;
 
-internal sealed class AgentUsageStatusService : IAsyncDisposable
+public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
 {
     private static readonly TimeSpan DetectionInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ManualRefreshCooldown = TimeSpan.FromSeconds(15);
 
-    private readonly TerminalSessionManager _sessions;
-    private readonly AgentProcessDetector _detector;
-    private readonly HttpClient _httpClient;
-    private volatile IReadOnlyDictionary<UsageProvider, IUsageClient> _clients;
+    private readonly Func<IReadOnlyCollection<int>> _getRootProcessIds;
+    private readonly AgentProcessDetector _detector = new();
+    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private readonly Dictionary<UsageProvider, ProviderRuntime> _providers = new()
     {
         [UsageProvider.Codex] = new(),
@@ -24,40 +21,22 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
     private readonly HashSet<Task> _refreshTasks = [];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _stateLock = new();
+    private volatile IReadOnlyDictionary<UsageProvider, IUsageClient> _clients;
     private Task? _monitorTask;
     private int _disposed;
 
-    internal AgentUsageStatusService(TerminalSessionManager sessions, AppSettings settings)
+    public AgentUsageMonitorService(
+        Func<IReadOnlyCollection<int>> getRootProcessIds,
+        AgentUsageMonitorOptions? options = null)
     {
-        _sessions = sessions;
-        _detector = new AgentProcessDetector();
-        _httpClient = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(20)
-        };
-        _clients = CreateClients(settings);
+        ArgumentNullException.ThrowIfNull(getRootProcessIds);
+        _getRootProcessIds = getRootProcessIds;
+        _clients = CreateClients(options ?? new AgentUsageMonitorOptions());
     }
 
-    internal event Action<AgentUsageStatus>? StatusChanged;
+    public event Action<AgentUsageStatus>? StatusChanged;
 
-    internal void UpdateSettings(AppSettings settings)
-    {
-        var autoRenew = settings.Indicators.AutoRenewKimiToken;
-        var current = _clients[UsageProvider.KimiCode] as KimiCodeUsageClient;
-        if (current?.AutoRenewToken == autoRenew)
-        {
-            return;
-        }
-
-        _clients = CreateClients(settings);
-        lock (_stateLock)
-        {
-            _providers[UsageProvider.KimiCode].LastAttempt = null;
-        }
-        _ = DetectAndRefresh();
-    }
-
-    internal AgentUsageStatus Current
+    public AgentUsageStatus Current
     {
         get
         {
@@ -68,13 +47,32 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         }
     }
 
-    internal void Start()
+    public void Start()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         _monitorTask ??= Task.Run(MonitorAsync);
     }
 
-    internal bool RequestRefresh(UsageProvider provider)
+    public void UpdateOptions(AgentUsageMonitorOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        var current = _clients[UsageProvider.KimiCode] as KimiCodeUsageClient;
+        if (current?.AutoRenewToken == options.AutoRenewKimiToken)
+        {
+            return;
+        }
+
+        _clients = CreateClients(options);
+        lock (_stateLock)
+        {
+            _providers[UsageProvider.KimiCode].LastAttempt = null;
+        }
+        _ = DetectAndRefreshAsync();
+    }
+
+    public bool RequestRefresh(UsageProvider provider)
     {
         if (Volatile.Read(ref _disposed) != 0 || !_clients.TryGetValue(provider, out var client))
         {
@@ -85,8 +83,8 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         lock (_stateLock)
         {
             var runtime = _providers[provider];
-            if (!runtime.Active || runtime.RefreshInProgress
-                || runtime.LastAttempt is { } lastAttempt && now - lastAttempt < ManualRefreshCooldown)
+            if (!runtime.Active || runtime.RefreshInProgress ||
+                runtime.LastAttempt is { } lastAttempt && now - lastAttempt < ManualRefreshCooldown)
             {
                 return false;
             }
@@ -103,13 +101,13 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
 
     private async Task MonitorAsync()
     {
-        await DetectAndRefresh().ConfigureAwait(false);
-        using var timer = new PeriodicTimer(DetectionInterval);
         try
         {
+            await DetectAndRefreshAsync().ConfigureAwait(false);
+            using var timer = new PeriodicTimer(DetectionInterval);
             while (await timer.WaitForNextTickAsync(_lifetime.Token).ConfigureAwait(false))
             {
-                await DetectAndRefresh().ConfigureAwait(false);
+                await DetectAndRefreshAsync().ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
@@ -117,7 +115,8 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         }
     }
 
-    private IReadOnlyDictionary<UsageProvider, IUsageClient> CreateClients(AppSettings settings) =>
+    private IReadOnlyDictionary<UsageProvider, IUsageClient> CreateClients(
+        AgentUsageMonitorOptions options) =>
         new Dictionary<UsageProvider, IUsageClient>
         {
             [UsageProvider.Codex] = new CodexUsageClient(_httpClient),
@@ -125,13 +124,15 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
                 _httpClient,
                 new KimiCodeUsageOptions
                 {
-                    AutoRenewToken = settings.Indicators.AutoRenewKimiToken,
+                    AutoRenewToken = options.AutoRenewKimiToken
                 })
         };
 
-    private Task DetectAndRefresh()
+    private async Task DetectAndRefreshAsync()
     {
-        var activeProviders = _detector.Detect(_sessions.GetSessionProcessIds());
+        var activeProviders = await _detector.DetectAsync(
+            _getRootProcessIds(),
+            _lifetime.Token).ConfigureAwait(false);
         var now = DateTimeOffset.UtcNow;
         var changed = false;
         var refreshes = new List<(UsageProvider Provider, IUsageClient Client)>();
@@ -147,8 +148,8 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
                     changed = true;
                 }
 
-                if (!active || runtime.RefreshInProgress
-                    || runtime.LastAttempt is { } lastAttempt && now - lastAttempt < RefreshInterval)
+                if (!active || runtime.RefreshInProgress ||
+                    runtime.LastAttempt is { } lastAttempt && now - lastAttempt < RefreshInterval)
                 {
                     continue;
                 }
@@ -170,8 +171,6 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         {
             TrackRefresh(RefreshAsync(provider, client));
         }
-
-        return Task.CompletedTask;
     }
 
     private void TrackRefresh(Task refreshTask)
@@ -248,7 +247,9 @@ internal sealed class AgentUsageStatusService : IAsyncDisposable
         return providers.Length == 0 ? AgentUsageStatus.Empty : new AgentUsageStatus(providers);
     }
 
-    private static AgentProviderUsageStatus ToStatus(UsageProvider provider, ProviderRuntime runtime)
+    private static AgentProviderUsageStatus ToStatus(
+        UsageProvider provider,
+        ProviderRuntime runtime)
     {
         var snapshot = runtime.Snapshot;
         var state = runtime.RefreshInProgress && runtime.Snapshot is null

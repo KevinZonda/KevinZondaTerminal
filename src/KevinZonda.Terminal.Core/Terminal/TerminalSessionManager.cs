@@ -164,9 +164,11 @@ internal sealed class TerminalSessionManager : IAsyncDisposable
     internal void Resize(string sessionId, int columns, int rows) =>
         Get(sessionId).Resize(columns, rows);
 
-    internal IReadOnlyList<uint> GetSessionProcessIds() =>
+    internal IReadOnlyList<int> GetSessionProcessIds() =>
         _sessions.Values
             .SelectMany(session => session.GetProcessIds())
+            .Where(processId => processId <= int.MaxValue)
+            .Select(processId => (int)processId)
             .Distinct()
             .ToArray();
 

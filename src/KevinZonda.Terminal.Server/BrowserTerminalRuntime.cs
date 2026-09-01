@@ -4,7 +4,6 @@ using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.ConPty;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Terminal;
-using KevinZonda.Terminal.Usage;
 using KevinZonda.Terminal.WebBridgeProtocol;
 using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
@@ -16,7 +15,7 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
 
     private readonly object _sync = new();
     private readonly TerminalSessionManager _sessions;
-    private readonly AgentUsageStatusService _agentUsage;
+    private readonly IAgentUsageMonitorService _agentUsage;
     private readonly ISystemMetricsService _systemMetrics;
     private readonly Dictionary<string, SessionRuntimeState> _sessionStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task<SessionRuntimeState>> _createOperations = new(StringComparer.Ordinal);
@@ -46,7 +45,9 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
             settings,
             options.StartingDirectory,
             ConPtyTerminalSessionFactory.Instance);
-        _agentUsage = new AgentUsageStatusService(_sessions, settings);
+        _agentUsage = new AgentUsageMonitorService(
+            _sessions.GetSessionProcessIds,
+            CreateAgentUsageOptions(settings));
         _systemMetrics = new SystemMetricsService();
 
         _sessions.OutputReceived += HandleOutput;
@@ -57,6 +58,11 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
         _agentUsage.Start();
         _systemMetrics.Start();
     }
+
+    private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
+    {
+        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+    };
 
     internal string Id { get; }
 

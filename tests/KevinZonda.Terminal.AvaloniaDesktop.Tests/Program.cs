@@ -47,22 +47,6 @@ await TestSettingsStoreAsync();
 TestSourceGeneratedBridgeJson();
 TestTerminalThemeCatalog();
 
-var detected = UnixAgentProcessDetector.DetectSnapshot(
-    """
-      100     1 /bin/zsh
-      101   100 /usr/local/bin/codex
-      102   101 /usr/bin/helper
-      200     1 /bin/zsh
-      201   200 /usr/local/bin/kimi-code
-      300     1 /usr/local/bin/codex
-    """,
-    [100, 200]);
-Require(detected.SetEquals([UsageProvider.Codex, UsageProvider.KimiCode]),
-    "Agent process detection did not follow both terminal process trees.");
-Require(UnixAgentProcessDetector.Classify("/opt/homebrew/bin/codex-aarch64") == UsageProvider.Codex,
-    "A platform-specific Codex executable was not recognized.");
-Require(UnixAgentProcessDetector.Classify("/usr/local/bin/kimi_code") == UsageProvider.KimiCode,
-    "The Kimi Code executable was not recognized.");
 if (OperatingSystem.IsMacOS())
 {
     Require(UnixTerminalSession.NeedsMacOSUtf8Locale(null, null, null),
@@ -93,7 +77,6 @@ Require(status.UpdatedAt is not null, "The metrics timestamp is missing.");
 Console.WriteLine(
     $"PASS system metrics: CPU {status.CpuPercent:F1}%, " +
     $"memory {status.UsedMemoryBytes}/{status.TotalMemoryBytes} bytes");
-Console.WriteLine("PASS Unix agent process detection");
 Console.WriteLine("PASS macOS window shortcut mapping");
 Console.WriteLine("PASS Avalonia settings persistence");
 Console.WriteLine("PASS shared Web bridge protocol");
@@ -242,7 +225,7 @@ static async Task TestSettingsStoreAsync()
 static async Task TestLiveAgentUsageAsync()
 {
     await using var sessions = new UnixTerminalSessionManager(Environment.CurrentDirectory);
-    await using var usage = new AgentUsageStatusService(sessions, new AppSettings());
+    await using var usage = new AgentUsageMonitorService(sessions.GetSessionProcessIds);
     var completed = new TaskCompletionSource<AgentProviderUsageStatus>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     usage.StatusChanged += status =>

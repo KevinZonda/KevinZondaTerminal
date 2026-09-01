@@ -4,6 +4,7 @@ using System.Text.Json;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.AgentUsageMonitor.Codex;
 using KevinZonda.AgentUsageMonitor.KimiCode;
+using KevinZonda.AgentUsageMonitor.ProcessDetection;
 
 if (args.Contains("--live-codex", StringComparer.OrdinalIgnoreCase)
     || args.Contains("--live-codex-rpc", StringComparer.OrdinalIgnoreCase))
@@ -56,6 +57,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Kimi endpoint normalization", TestKimiEndpointAsync),
     ("Codex OAuth request and response", TestCodexOAuthAsync),
     ("Codex endpoint normalization", TestCodexEndpointAsync),
+    ("Cross-platform agent process tree detection", TestAgentProcessTreeAsync),
+    ("Agent monitor service lifecycle", TestAgentMonitorServiceLifecycleAsync),
 };
 
 var failures = 0;
@@ -74,6 +77,49 @@ foreach (var test in tests)
 }
 
 return failures == 0 ? 0 : 1;
+
+static Task TestAgentProcessTreeAsync()
+{
+    var unix = AgentProcessDetector.DetectUnixSnapshot(
+        """
+          100     1 /bin/zsh
+          101   100 /usr/local/bin/codex
+          102   101 /usr/bin/helper
+          200     1 /bin/zsh
+          201   200 /usr/local/bin/kimi-code
+          300     1 /usr/local/bin/codex
+        """,
+        [100, 200]);
+    Equal(true, unix.SetEquals([UsageProvider.Codex, UsageProvider.KimiCode]));
+
+    var windows = AgentProcessDetector.DetectProcessTree(
+        [
+            new AgentProcessDetector.ProcessEntry(500, 1, "powershell.exe"),
+            new AgentProcessDetector.ProcessEntry(501, 500, "codex.exe"),
+            new AgentProcessDetector.ProcessEntry(502, 501, "helper.exe"),
+            new AgentProcessDetector.ProcessEntry(600, 1, "kimi-code.exe")
+        ],
+        [500]);
+    Equal(true, windows.SetEquals([UsageProvider.Codex]));
+    Equal(UsageProvider.Codex,
+        AgentProcessDetector.Classify("/opt/homebrew/bin/codex-aarch64"));
+    Equal(UsageProvider.KimiCode,
+        AgentProcessDetector.Classify("/usr/local/bin/kimi_code"));
+    Equal<UsageProvider?>(null, AgentProcessDetector.Classify("helper"));
+    return Task.CompletedTask;
+}
+
+static async Task TestAgentMonitorServiceLifecycleAsync()
+{
+    await using IAgentUsageMonitorService service = new AgentUsageMonitorService(
+        () => Array.Empty<int>());
+    Equal(0, service.Current.Providers.Count);
+    service.UpdateOptions(new AgentUsageMonitorOptions { AutoRenewKimiToken = true });
+    service.Start();
+    await Task.Delay(50);
+    Equal(0, service.Current.Providers.Count);
+    Equal(false, service.RequestRefresh(UsageProvider.Codex));
+}
 
 static async Task TestKimiApiAsync()
 {

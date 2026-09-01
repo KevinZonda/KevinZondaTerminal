@@ -1,6 +1,7 @@
 # KevinZonda.AgentUsageMonitor
 
-`KevinZonda.AgentUsageMonitor` is a dependency-free .NET library for reading Codex and Kimi Code quota usage.
+`KevinZonda.AgentUsageMonitor` is a dependency-free, cross-platform .NET library for detecting active Codex and Kimi
+Code processes and reading their quota usage.
 
 Supported sources:
 
@@ -58,6 +59,22 @@ errors are surfaced instead of silently launching another process.
 Kimi CLI OAuth renewal is opt-in. Set `AutoRenewToken = true` to refresh an expiring token for the lifetime of the
 `KimiCodeUsageClient` instance. Renewed access and refresh tokens remain in memory only; the CLI credential file and all
 other files are left unchanged.
+
+Applications that own terminal or process sessions can use `AgentUsageMonitorService` to detect provider processes,
+refresh active providers, and publish UI-ready status updates. The application supplies only its current root process
+IDs, so the monitor has no dependency on a terminal implementation or settings model:
+
+```csharp
+await using IAgentUsageMonitorService monitor = new AgentUsageMonitorService(
+    () => terminalSessions.GetProcessIds(),
+    new AgentUsageMonitorOptions { AutoRenewKimiToken = true });
+
+monitor.StatusChanged += status => Render(status);
+monitor.Start();
+```
+
+The monitor follows descendant process trees on Windows, macOS, and Linux. This allows a shell process to remain the
+registered root while `codex` or `kimi-code` runs as a child process.
 
 ## Build and test
 

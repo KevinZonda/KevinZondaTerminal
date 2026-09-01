@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Hosting;
@@ -8,7 +9,6 @@ using KevinZonda.Terminal.Interop;
 using KevinZonda.Terminal.Messaging;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Terminal;
-using KevinZonda.Terminal.Usage;
 using KevinZonda.Terminal.Web;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -27,7 +27,7 @@ internal sealed class MainForm : Form
 
     private readonly WebView2 _webView;
     private readonly TerminalSessionManager _sessions;
-    private readonly AgentUsageStatusService _agentUsage;
+    private readonly IAgentUsageMonitorService _agentUsage;
     private readonly ISystemMetricsService _systemMetrics;
     private readonly SettingsStore _settingsStore = new();
     private readonly string _startingDirectory;
@@ -46,7 +46,9 @@ internal sealed class MainForm : Form
             _settings,
             startingDirectory,
             ConPtyTerminalSessionFactory.Instance);
-        _agentUsage = new AgentUsageStatusService(_sessions, _settings);
+        _agentUsage = new AgentUsageMonitorService(
+            _sessions.GetSessionProcessIds,
+            CreateAgentUsageOptions(_settings));
         _systemMetrics = new SystemMetricsService();
         Text = "KevinZonda Terminal";
         BackColor = Color.FromArgb(12, 15, 20);
@@ -65,6 +67,11 @@ internal sealed class MainForm : Form
         Shown += HandleShown;
         FormClosing += HandleFormClosing;
     }
+
+    private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
+    {
+        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+    };
 
     protected override void OnHandleCreated(EventArgs eventArgs)
     {
@@ -541,7 +548,7 @@ internal sealed class MainForm : Form
             {
                 _settings = await _settingsStore.SaveAsync(settingsForm.Settings);
                 await _sessions.UpdateSettingsAsync(_settings);
-                _agentUsage.UpdateSettings(_settings);
+                _agentUsage.UpdateOptions(CreateAgentUsageOptions(_settings));
                 // Do not eagerly launch a hidden shell after saving settings.
                 // Closing the window while an MSYS2 prewarm is still loading
                 // can surface a zsh DLL-initialization error during Job cleanup.

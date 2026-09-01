@@ -1,11 +1,11 @@
-namespace KevinZonda.Terminal.Usage;
+namespace KevinZonda.AgentUsageMonitor;
 
-internal sealed record AgentUsageStatus(IReadOnlyList<AgentProviderUsageStatus> Providers)
+public sealed record AgentUsageStatus(IReadOnlyList<AgentProviderUsageStatus> Providers)
 {
-    internal static AgentUsageStatus Empty { get; } = new([]);
+    public static AgentUsageStatus Empty { get; } = new([]);
 }
 
-internal sealed record AgentProviderUsageStatus(
+public sealed record AgentProviderUsageStatus(
     string Provider,
     string State,
     bool Refreshing,
@@ -18,7 +18,7 @@ internal sealed record AgentProviderUsageStatus(
     DateTimeOffset? NextRefreshAt,
     string? Error);
 
-internal sealed record AgentUsageWindowStatus(
+public sealed record AgentUsageWindowStatus(
     string Name,
     string Label,
     double UsedPercent,
@@ -26,13 +26,13 @@ internal sealed record AgentUsageWindowStatus(
     double? Used,
     double? Limit);
 
-internal sealed record AgentUsageCreditsStatus(
+public sealed record AgentUsageCreditsStatus(
     double? Remaining,
     bool IsUnlimited,
     double? Total,
     string? Currency);
 
-internal sealed record AgentUsageBudgetStatus(
+public sealed record AgentUsageBudgetStatus(
     string Name,
     double Limit,
     double Used,
