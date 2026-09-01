@@ -161,12 +161,12 @@ Launcher Settings 中的 `ICP registration` 可配置登录页底部显示的备
 `沪ICP备12345678号-1`；Server 也支持 `--icp-registration <number>`。备案号链接固定指向
 `https://beian.miit.gov.cn/`，配置为空时登录页不会生成备案元素。
 表单使用 CSRF Token，验证成功后 Server 会签发 HttpOnly Cookie，页面资源和 `/ws` WebSocket 都通过该
-Cookie 鉴权；密码只在提交登录表单时发送。登录页面由独立的 `KevinZonda.Terminal.Server.Login` 项目嵌入
-Server，不进入桌面 Terminal 或 Dashboard 前端资源。`/healthz` 保持公开。
+Cookie 鉴权；密码只在提交登录表单时发送。登录页面由 Server 直接嵌入，不进入桌面 Terminal 或
+Dashboard 前端资源。`/healthz` 保持公开。
 配置不存在或 `allowedHash` 为空时，`auto` 模式会输出 `No Pass Hash, fallback to No Pass.` 并按无密码模式运行。
 
 Server Dashboard 位于 `/dashboard`，用于查看 Runtime、Session、Shell PID、连接状态和缓冲区占用，也可以关闭单个
-Session 或整个 Runtime。Dashboard 前端由独立的 `KevinZonda.Terminal.Server.Dashboard` 项目构建并嵌入
+Session 或整个 Runtime。Dashboard 前端位于 `KevinZonda.Terminal.Server/Dashboard`，由 Server 构建并嵌入
 `kterm-server`，不会进入桌面 Terminal 的前端资源。管理操作只在密码认证启用时开放；无密码模式下 Dashboard
 只显示管理功能已禁用的提示。Dashboard 的 `Local Configuration` 页签不依赖管理权限，可通过当前 Origin 的
 `kterm.fontFamily`、`kterm.fontSize` 和 `kterm.theme` Local Storage 项调整本浏览器中的所有 Terminal 页面。

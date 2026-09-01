@@ -6,14 +6,26 @@
     <Nullable>enable</Nullable>
     <AssemblyName>kterm-server</AssemblyName>
     <RootNamespace>KevinZonda.Terminal.Server</RootNamespace>
+    <DashboardDir>$(MSBuildProjectDirectory)\Dashboard</DashboardDir>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Dashboard\bin\**;Dashboard\dist\**;Dashboard\node_modules\**;Dashboard\obj\**</DefaultItemExcludes>
   </PropertyGroup>
+
+  <Target Name="BuildDashboardAssets" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(DashboardDir)" Command="pnpm install --frozen-lockfile" Condition="!Exists('$(DashboardDir)\node_modules\.pnpm\lock.yaml')" />
+    <Exec WorkingDirectory="$(DashboardDir)" Command="pnpm run build" />
+    <ItemGroup>
+      <_DashboardAsset Include="$(DashboardDir)\dist\**\*" />
+      <EmbeddedResource Include="@(_DashboardAsset)">
+        <LogicalName>KevinZonda.Terminal.Server.Dashboard/%(_DashboardAsset.RecursiveDir)%(_DashboardAsset.Filename)%(_DashboardAsset.Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\KevinZonda.AgentUsageMonitor\KevinZonda.AgentUsageMonitor.csproj" />
     <ProjectReference Include="..\KevinZonda.SystemMetrics\KevinZonda.SystemMetrics.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.ConPty\KevinZonda.Terminal.ConPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
-    <ProjectReference Include="..\KevinZonda.Terminal.Server.Dashboard\KevinZonda.Terminal.Server.Dashboard.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Server.UserAuth\KevinZonda.Terminal.Server.UserAuth.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
   </ItemGroup>

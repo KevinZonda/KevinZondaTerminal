@@ -46,7 +46,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: |
             src/KevinZonda.Terminal.WebAssets/pnpm-lock.yaml
-            src/KevinZonda.Terminal.Server.Dashboard/pnpm-lock.yaml
+            src/KevinZonda.Terminal.Server/Dashboard/pnpm-lock.yaml
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -57,7 +57,7 @@ jobs:
         shell: pwsh
         run: |
           pnpm --dir src/KevinZonda.Terminal.WebAssets install --frozen-lockfile
-          pnpm --dir src/KevinZonda.Terminal.Server.Dashboard install --frozen-lockfile
+          pnpm --dir src/KevinZonda.Terminal.Server/Dashboard install --frozen-lockfile
 
       - name: Restore .NET dependencies
         run: >-
