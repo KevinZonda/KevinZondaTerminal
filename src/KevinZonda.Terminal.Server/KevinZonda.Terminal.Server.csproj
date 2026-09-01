@@ -13,8 +13,13 @@
     <ProjectReference Include="..\KevinZonda.Terminal.ConPty\KevinZonda.Terminal.ConPty.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Core\KevinZonda.Terminal.Core.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Server.Dashboard\KevinZonda.Terminal.Server.Dashboard.csproj" />
-    <ProjectReference Include="..\KevinZonda.Terminal.Server.Login\KevinZonda.Terminal.Server.Login.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.Server.UserAuth\KevinZonda.Terminal.Server.UserAuth.csproj" />
     <ProjectReference Include="..\KevinZonda.Terminal.WebAssets\KevinZonda.Terminal.WebAssets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Login\Assets\LoginPage.html">
+      <LogicalName>KevinZonda.Terminal.Server.Login/LoginPage.html</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

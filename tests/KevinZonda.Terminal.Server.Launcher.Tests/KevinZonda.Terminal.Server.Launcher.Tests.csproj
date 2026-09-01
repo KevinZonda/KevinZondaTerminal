@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\KevinZonda.Terminal.Server.Launcher\KevinZonda.Terminal.Server.Launcher.csproj" />
-    <ProjectReference Include="..\..\src\KevinZonda.Terminal.Server.Login\KevinZonda.Terminal.Server.Login.csproj" />
+    <ProjectReference Include="..\..\src\KevinZonda.Terminal.Server\KevinZonda.Terminal.Server.csproj" />
     <ProjectReference Include="..\..\src\KevinZonda.Terminal.Server.UserAuth\KevinZonda.Terminal.Server.UserAuth.csproj" />
   </ItemGroup>
 </Project>

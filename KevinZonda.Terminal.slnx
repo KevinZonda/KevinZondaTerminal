@@ -9,7 +9,6 @@
   <Project Path="src/KevinZonda.Terminal.WebAssets/KevinZonda.Terminal.WebAssets.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server/KevinZonda.Terminal.Server.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.Launcher/KevinZonda.Terminal.Server.Launcher.csproj" />
-  <Project Path="src/KevinZonda.Terminal.Server.Login/KevinZonda.Terminal.Server.Login.csproj" />
   <Project Path="src/KevinZonda.Terminal.Server.UserAuth/KevinZonda.Terminal.Server.UserAuth.csproj" />
   <Project Path="src/KevinZonda.Terminal.UnixPty/KevinZonda.Terminal.UnixPty.csproj" />
   <Project Path="src/KevinZonda.Terminal.WinFormsDesktop/KevinZonda.Terminal.WinFormsDesktop.csproj" />
