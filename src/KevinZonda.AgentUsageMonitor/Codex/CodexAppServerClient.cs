@@ -19,6 +19,21 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
         CodexUsageOptions options,
         CancellationToken cancellationToken)
     {
+        try
+        {
+            return await StartAsync(options, "never", cancellationToken);
+        }
+        catch (UsageException exception) when (ShouldRetryWithLegacyApprovalPolicy(exception))
+        {
+            return await StartAsync(options, "untrusted", cancellationToken);
+        }
+    }
+
+    private static async Task<CodexAppServerClient> StartAsync(
+        CodexUsageOptions options,
+        string approvalPolicy,
+        CancellationToken cancellationToken)
+    {
         var executable = ResolveExecutable(options.CodexExecutable);
         var startInfo = new ProcessStartInfo
         {
@@ -29,7 +44,7 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        AddLaunchArguments(startInfo, executable);
+        AddLaunchArguments(startInfo, executable, approvalPolicy);
         if (!string.IsNullOrWhiteSpace(options.CodexHome))
         {
             startInfo.Environment["CODEX_HOME"] = options.CodexHome;
@@ -67,6 +82,13 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
         }
     }
 
+    private static bool ShouldRetryWithLegacyApprovalPolicy(UsageException exception) =>
+        exception.Code == UsageErrorCode.ProcessError
+        && exception.Message.Contains("invalid value", StringComparison.OrdinalIgnoreCase)
+        && exception.Message.Contains("never", StringComparison.OrdinalIgnoreCase)
+        && exception.Message.Contains("--ask-for-approval", StringComparison.OrdinalIgnoreCase)
+        && exception.Message.Contains("untrusted", StringComparison.OrdinalIgnoreCase);
+
     private static string ResolveExecutable(string configured)
     {
         if (!OperatingSystem.IsWindows() || Path.IsPathRooted(configured))
@@ -94,9 +116,12 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
         return configured;
     }
 
-    private static void AddLaunchArguments(ProcessStartInfo startInfo, string executable)
+    private static void AddLaunchArguments(
+        ProcessStartInfo startInfo,
+        string executable,
+        string approvalPolicy)
     {
-        var arguments = new[] { "-s", "read-only", "-a", "untrusted", "app-server" };
+        var arguments = new[] { "-s", "read-only", "-a", approvalPolicy, "app-server" };
         if (OperatingSystem.IsWindows()
             && Path.GetExtension(executable) is ".cmd" or ".bat")
         {
