@@ -61,9 +61,6 @@
                    HorizontalAlignment="Center"
                    TextAlignment="Center"
                    TextWrapping="Wrap" />
-        <TextBlock Text="Avalonia UI · xterm.js · Unix PTY"
-                   Classes="secondary"
-                   HorizontalAlignment="Center" />
         <TextBlock x:Name="CommitText"
                    Classes="secondary"
                    HorizontalAlignment="Center"
