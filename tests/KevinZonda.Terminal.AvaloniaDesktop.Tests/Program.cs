@@ -1,10 +1,34 @@
 using KevinZonda.Terminal.AvaloniaDesktop;
+using KevinZonda.AgentUsageMonitor;
 
 if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
 {
     Console.WriteLine("SKIP system metrics are implemented for macOS and Linux");
     return;
 }
+
+if (args.Contains("--live-agent-usage", StringComparer.OrdinalIgnoreCase))
+{
+    await TestLiveAgentUsageAsync();
+    return;
+}
+
+var detected = UnixAgentProcessDetector.DetectSnapshot(
+    """
+      100     1 /bin/zsh
+      101   100 /usr/local/bin/codex
+      102   101 /usr/bin/helper
+      200     1 /bin/zsh
+      201   200 /usr/local/bin/kimi-code
+      300     1 /usr/local/bin/codex
+    """,
+    [100, 200]);
+Require(detected.SetEquals([UsageProvider.Codex, UsageProvider.KimiCode]),
+    "Agent process detection did not follow both terminal process trees.");
+Require(UnixAgentProcessDetector.Classify("/opt/homebrew/bin/codex-aarch64") == UsageProvider.Codex,
+    "A platform-specific Codex executable was not recognized.");
+Require(UnixAgentProcessDetector.Classify("/usr/local/bin/kimi_code") == UsageProvider.KimiCode,
+    "The Kimi Code executable was not recognized.");
 
 await using var service = new SystemMetricsService();
 var updateCount = 0;
@@ -26,6 +50,37 @@ Require(status.UpdatedAt is not null, "The metrics timestamp is missing.");
 Console.WriteLine(
     $"PASS system metrics: CPU {status.CpuPercent:F1}%, " +
     $"memory {status.UsedMemoryBytes}/{status.TotalMemoryBytes} bytes");
+Console.WriteLine("PASS Unix agent process detection");
+
+static async Task TestLiveAgentUsageAsync()
+{
+    await using var sessions = new UnixTerminalSessionManager(Environment.CurrentDirectory);
+    await using var usage = new AgentUsageStatusService(sessions, new DesktopSettings());
+    var completed = new TaskCompletionSource<AgentProviderUsageStatus>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    usage.StatusChanged += status =>
+    {
+        var codex = status.Providers.FirstOrDefault(provider => provider.Provider == "codex");
+        if (codex?.State is "ready" or "error" or "stale")
+        {
+            completed.TrySetResult(codex);
+        }
+    };
+
+    var session = await sessions.CreateAsync(80, 24);
+    usage.Start();
+    await sessions.WriteAsync(session.Id, "codex\n");
+
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    var result = await completed.Task.WaitAsync(timeout.Token);
+    Require(result.State == "ready", result.Error ?? $"Unexpected Codex usage state: {result.State}");
+    Require(result.Windows.Count > 0, "Codex usage returned no quota windows.");
+    Console.WriteLine(
+        $"PASS live Avalonia agent usage: {result.Plan ?? "unknown plan"}, " +
+        $"{result.Windows.Count} quota window(s)");
+
+    await sessions.CloseAsync(session.Id);
+}
 
 static void Require(bool condition, string message)
 {

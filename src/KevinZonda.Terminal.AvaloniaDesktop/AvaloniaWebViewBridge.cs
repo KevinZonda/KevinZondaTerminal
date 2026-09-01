@@ -16,6 +16,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
 
     private readonly NativeWebView _webView;
     private readonly UnixTerminalSessionManager _sessions;
+    private readonly AgentUsageStatusService _agentUsage;
     private readonly SystemMetricsService _systemMetrics;
     private readonly MainWindow _owner;
     private readonly string _workingDirectory;
@@ -28,18 +29,21 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     internal AvaloniaWebViewBridge(
         NativeWebView webView,
         UnixTerminalSessionManager sessions,
+        AgentUsageStatusService agentUsage,
         SystemMetricsService systemMetrics,
         MainWindow owner,
         string workingDirectory)
     {
         _webView = webView;
         _sessions = sessions;
+        _agentUsage = agentUsage;
         _systemMetrics = systemMetrics;
         _owner = owner;
         _workingDirectory = workingDirectory;
         _settings = _settingsStore.Load();
         _sessions.OutputReceived += QueueOutput;
         _sessions.SessionExited += QueueExit;
+        _agentUsage.StatusChanged += QueueAgentUsage;
         _systemMetrics.StatusChanged += QueueSystemMetrics;
         _webView.WebMessageReceived += HandleMessage;
         _outputTimer = new DispatcherTimer
@@ -69,7 +73,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                         application = "KevinZonda Terminal",
                         version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.1.0",
                         settings = _settings,
-                        agentUsage = new { providers = Array.Empty<object>() },
+                        agentUsage = _agentUsage.Current,
                         systemMetrics = _systemMetrics.Current
                     });
                     break;
@@ -140,7 +144,16 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
                     break;
 
                 case "agentUsage.refresh":
-                    Post("agentUsage.refreshResult", message.RequestId, payload: new { started = false });
+                    var provider = GetString(message.Payload, "provider") switch
+                    {
+                        "codex" => KevinZonda.AgentUsageMonitor.UsageProvider.Codex,
+                        "kimi" => KevinZonda.AgentUsageMonitor.UsageProvider.KimiCode,
+                        _ => throw new InvalidDataException("Unsupported usage provider.")
+                    };
+                    Post(
+                        "agentUsage.refreshResult",
+                        message.RequestId,
+                        payload: new { started = _agentUsage.RequestRefresh(provider) });
                     break;
 
                 default:
@@ -200,6 +213,14 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         if (Volatile.Read(ref _disposed) == 0)
         {
             Post("systemMetrics.changed", payload: new { systemMetrics = status });
+        }
+    }
+
+    private void QueueAgentUsage(AgentUsageStatus status)
+    {
+        if (Volatile.Read(ref _disposed) == 0)
+        {
+            Post("agentUsage.changed", payload: new { agentUsage = status });
         }
     }
 
@@ -336,6 +357,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
         _webView.WebMessageReceived -= HandleMessage;
         _sessions.OutputReceived -= QueueOutput;
         _sessions.SessionExited -= QueueExit;
+        _agentUsage.StatusChanged -= QueueAgentUsage;
         _systemMetrics.StatusChanged -= QueueSystemMetrics;
         _outputQueues.Clear();
     }

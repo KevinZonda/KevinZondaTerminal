@@ -317,14 +317,14 @@ static async Task TestCodexOAuthAsync()
         Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(temporaryRoot);
     var authPath = Path.Combine(temporaryRoot, "auth.json");
-    await File.WriteAllTextAsync(authPath, """
+    await File.WriteAllTextAsync(authPath, $$"""
         {
           "tokens": {
             "access_token": "test-codex",
             "refresh_token": "refresh",
             "account_id": "account-1"
           },
-          "last_refresh": "2026-08-14T00:00:00Z"
+          "last_refresh": "{{DateTimeOffset.UtcNow:O}}"
         }
         """);
 

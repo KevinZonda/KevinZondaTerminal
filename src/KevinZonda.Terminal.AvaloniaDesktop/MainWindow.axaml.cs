@@ -10,6 +10,7 @@ public sealed partial class MainWindow : Window
     private NativeWebView _webView = null!;
     private LocalAssetServer? _assetServer;
     private UnixTerminalSessionManager? _sessions;
+    private AgentUsageStatusService? _agentUsage;
     private SystemMetricsService? _systemMetrics;
     private AvaloniaWebViewBridge? _bridge;
     private bool _initialized;
@@ -48,14 +49,19 @@ public sealed partial class MainWindow : Window
         {
             _assetServer = await LocalAssetServer.StartAsync();
             _sessions = new UnixTerminalSessionManager(_workingDirectory);
+            _agentUsage = new AgentUsageStatusService(
+                _sessions,
+                new DesktopSettingsStore().Load());
             _systemMetrics = new SystemMetricsService();
             _systemMetrics.Start();
             _bridge = new AvaloniaWebViewBridge(
                 _webView,
                 _sessions,
+                _agentUsage,
                 _systemMetrics,
                 this,
                 _workingDirectory);
+            _agentUsage.Start();
             _webView.Source = _assetServer.StartPage;
         }
         catch (Exception exception)
@@ -90,6 +96,10 @@ public sealed partial class MainWindow : Window
 
         _cleanupStarted = true;
         _bridge?.Dispose();
+        if (_agentUsage is not null)
+        {
+            await _agentUsage.DisposeAsync();
+        }
         if (_systemMetrics is not null)
         {
             await _systemMetrics.DisposeAsync();

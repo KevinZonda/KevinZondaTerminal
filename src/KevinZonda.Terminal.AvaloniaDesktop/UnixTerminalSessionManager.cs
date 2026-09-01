@@ -69,6 +69,9 @@ internal sealed class UnixTerminalSessionManager : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         Get(sessionId).ResizeAsync(columns, rows, cancellationToken);
 
+    internal IReadOnlyList<int> GetSessionProcessIds() =>
+        _sessions.Values.Select(session => session.ProcessId).ToArray();
+
     internal async Task CloseAsync(string sessionId)
     {
         if (_sessions.TryRemove(sessionId, out var session))
