@@ -44,12 +44,14 @@ else
 AVALONIA_RID ?= unsupported
 endif
 AVALONIA_SELF_CONTAINED ?= false
+MACOS_BUNDLE_ID ?= com.kevinzonda.terminal
+MACOS_SIGN_IDENTITY ?= -
 
 CONFIG ?= Debug
 
 .DEFAULT_GOAL := build
 
-.PHONY: help deps install restore web dashboard build build-avalonia run run-avalonia run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-launcher-cert test-auth test-unix-pty test-system-metrics format audit publish publish-desktop publish-avalonia publish-server publish-launcher clean
+.PHONY: help deps install restore web dashboard build build-avalonia run run-avalonia run-server run-launcher auth-init auth-add auth-verify test test-desktop test-server test-server-auth test-server-launcher test-launcher-cert test-auth test-unix-pty test-system-metrics format audit publish publish-desktop publish-avalonia app-avalonia publish-server publish-launcher clean
 
 help:
 	@echo "Available targets:"
@@ -80,6 +82,7 @@ help:
 	@echo "  make publish   - publish all ReadyToRun single-file win-x64 executables"
 	@echo "  make publish-desktop - publish the desktop executable"
 	@echo "  make publish-avalonia - publish for the current host RID; override AVALONIA_RID if needed"
+	@echo "  make app-avalonia - build a self-contained macOS .app for the current architecture"
 	@echo "  make publish-server - publish the server executable"
 	@echo "  make publish-launcher - publish the Server tray Launcher"
 	@echo "  make clean     - clean .NET build outputs"
@@ -170,6 +173,9 @@ publish-desktop:
 
 publish-avalonia:
 	dotnet publish $(AVALONIA_PROJECT) -c Release -r $(AVALONIA_RID) --self-contained $(AVALONIA_SELF_CONTAINED) --nologo
+
+app-avalonia:
+	MACOS_BUNDLE_ID="$(MACOS_BUNDLE_ID)" MACOS_SIGN_IDENTITY="$(MACOS_SIGN_IDENTITY)" scripts/package-macos.sh "$(AVALONIA_RID)"
 
 publish-server:
 	dotnet publish $(SERVER_PROJECT) -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true --nologo

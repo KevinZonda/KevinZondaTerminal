@@ -2,9 +2,11 @@ bin/
 obj/
 node_modules/
 dist/
+artifacts/
 .vs/
 *.user
 *.suo
 *.log
 .vscode
 server_auth.json
+.DS_Store

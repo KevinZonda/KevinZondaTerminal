@@ -25,6 +25,26 @@
 dotnet run --project src/KevinZonda.Terminal.AvaloniaDesktop
 ```
 
+在 macOS 上生成当前 CPU 架构的自包含 `.app`：
+
+```bash
+make app-avalonia
+open "artifacts/macos/osx-arm64/KevinZonda Terminal.app"
+```
+
+上面的路径是 Apple Silicon 示例。产物默认使用 ad-hoc 签名，适合本机测试。需要正式签名时可以传入
+Developer ID Application 证书名称；签名凭据不会写入仓库：
+
+```bash
+make app-avalonia MACOS_SIGN_IDENTITY="Developer ID Application: Example (TEAMID)"
+```
+
+该命令目前生成并签名 `.app`，不执行 Apple notarization；对外分发前仍需使用 `notarytool`
+提交公证并 staple 公证票据。
+
+打包会复用 Windows 桌面端的 `WinFormsDefault.ico` 并自动转换为 `.icns`。由于 Unix PTY
+helper 在构建时按宿主架构编译，目前不允许在 Apple Silicon 上交叉打包 `osx-x64`，反之亦然。
+
 可以用目录参数或 `--working-directory` 指定 Shell 的启动目录：
 
 ```bash
