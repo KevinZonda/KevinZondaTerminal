@@ -112,6 +112,7 @@ export class TerminalController {
       linkHandler: {
         activate: (_event, uri) => this.bridge.openExternal(uri)
       },
+      rightClickSelectsWord: false,
       scrollback: 5000,
       theme: resolveTerminalTheme(theme.name),
       // We always sit behind ConPTY (OpenConsole passthrough), so adopt its
