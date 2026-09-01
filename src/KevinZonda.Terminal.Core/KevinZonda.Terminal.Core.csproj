@@ -11,14 +11,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\KevinZonda.Terminal\Configuration\**\*.cs" Link="Configuration\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\KevinZonda.Terminal\Interop\**\*.cs" Link="Interop\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\KevinZonda.Terminal\Monitoring\**\*.cs" Link="Monitoring\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\KevinZonda.Terminal\Terminal\**\*.cs" Link="Terminal\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\KevinZonda.Terminal\Usage\**\*.cs" Link="Usage\%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
-
-  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>KevinZonda.Terminal</_Parameter1>
     </AssemblyAttribute>

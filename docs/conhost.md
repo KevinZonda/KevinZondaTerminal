@@ -260,7 +260,7 @@ conhost 的行为，可以接受。修复提交：`ae72da5`。
 - Windows Terminal 源码：`src/winconpty/winconpty.cpp`、`winconpty.h`、
   `src/server/DeviceHandle.cpp`、`src/host/_stream.cpp`（WriteCharsVT）、
   `src/terminal/adapter/adaptDispatch.cpp`（_DoLineFeed）
-- KevinZonda Terminal 实现：`src/KevinZonda.Terminal/Interop/`（IConHost、ConHost、
+- KevinZonda Terminal 实现：`src/KevinZonda.Terminal.Core/Interop/`（IConHost、ConHost、
   KernelConHost、OpenConsoleConHost、NativeMethods.Conpty）、
   `tools/openconsole/README.md`、`scripts/resize-progress.ps1`（resize
   残影复现脚本）
