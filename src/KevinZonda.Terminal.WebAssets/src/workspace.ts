@@ -734,7 +734,11 @@ export class Workspace implements TerminalCallbacks {
       return;
     }
 
-    tab.title = title.trim();
+    const normalizedTitle = title.trim();
+    if (tab.title === normalizedTitle) {
+      return;
+    }
+    tab.title = normalizedTitle;
     this.refreshPaneTabs(pane);
     this.syncWindowTitle();
     this.persistResumeState();
@@ -1786,16 +1790,6 @@ export class Workspace implements TerminalCallbacks {
       const tabElement = document.createElement('div');
       tabElement.className = 'pane-tab';
       tabElement.dataset.sessionId = tab.sessionId;
-      tabElement.classList.toggle('active', tab.sessionId === pane.activeSessionId);
-      const tabBellMode = this.settings.bell.tabVisualFeedback;
-      const bellRinging = tabBellMode !== 'None' &&
-        this.ringingBellSessionIds.has(tab.sessionId);
-      const bellUnviewed = tabBellMode === 'UntilViewed' &&
-        this.unviewedTabBellSessionIds.has(tab.sessionId);
-      const hasBell = bellRinging || bellUnviewed;
-      tabElement.classList.toggle('has-bell', hasBell);
-      tabElement.classList.toggle('bell-ringing', bellRinging);
-      tabElement.classList.toggle('bell-unviewed', bellUnviewed);
       tabElement.addEventListener('pointerdown', event => {
         if (event.button === 1) {
           event.preventDefault();
@@ -1823,11 +1817,6 @@ export class Workspace implements TerminalCallbacks {
       const activate = document.createElement('button');
       activate.type = 'button';
       activate.className = 'pane-tab-activate';
-      activate.title = `${tab.title}\n${tab.processInfo}${hasBell ? '\nBell rang' : ''}`;
-      if (hasBell) {
-        activate.setAttribute('aria-label', `${tab.title || 'Terminal'}, bell notification`);
-      }
-      activate.textContent = tab.title || 'Terminal';
       activate.addEventListener('click', event => {
         // Pointer activation is handled on pointerup so a small hand movement
         // cannot turn a click into a swallowed native drag. Keep click for
@@ -1841,22 +1830,13 @@ export class Workspace implements TerminalCallbacks {
       close.type = 'button';
       close.className = 'pane-tab-close';
       close.title = 'Close tab';
-      close.setAttribute('aria-label', `Close ${tab.title}`);
       close.textContent = '×';
       close.addEventListener('click', event => {
         event.stopPropagation();
         this.closeTerminalTab(pane.id, tab.sessionId);
       });
-      tabElement.append(activate);
-      if (hasBell) {
-        const bell = document.createElement('span');
-        bell.className = 'pane-tab-bell';
-        bell.title = 'Bell rang';
-        bell.setAttribute('aria-hidden', 'true');
-        bell.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2m6-6v-5c0-3.1-1.6-5.6-4.5-6.3V4a1.5 1.5 0 0 0-3 0v.7C7.6 5.4 6 7.9 6 11v5l-2 2v1h16v-1z"/></svg>';
-        tabElement.append(bell);
-      }
-      tabElement.append(close);
+      tabElement.append(activate, close);
+      this.updatePaneTab(tab, pane, tabElement);
       fragment.append(tabElement);
     }
 
@@ -2072,8 +2052,50 @@ export class Workspace implements TerminalCallbacks {
   private refreshPaneTabs(pane: PaneState): void {
     const tabStrip = this.paneElements.get(pane.id)?.querySelector<HTMLElement>('.pane-tab-strip');
     if (tabStrip) {
-      this.renderPaneTabs(pane, tabStrip);
+      // Status updates must not replace the nodes holding an in-flight mouse
+      // gesture. Structural changes use render(); this path only updates tabs.
+      for (const element of tabStrip.querySelectorAll<HTMLElement>('.pane-tab')) {
+        const tab = pane.tabs.find(tab => tab.sessionId === element.dataset.sessionId);
+        if (tab) {
+          this.updatePaneTab(tab, pane, element);
+        }
+      }
       this.updateTabStripOverflow(tabStrip);
+    }
+  }
+
+  private updatePaneTab(tab: TerminalTabState, pane: PaneState, element: HTMLElement): void {
+    const mode = this.settings.bell.tabVisualFeedback;
+    const ringing = mode !== 'None' && this.ringingBellSessionIds.has(tab.sessionId);
+    const unviewed = mode === 'UntilViewed' && this.unviewedTabBellSessionIds.has(tab.sessionId);
+    const hasBell = ringing || unviewed;
+    element.classList.toggle('active', tab.sessionId === pane.activeSessionId);
+    element.classList.toggle('has-bell', hasBell);
+    element.classList.toggle('bell-ringing', ringing);
+    element.classList.toggle('bell-unviewed', unviewed);
+    const activate = element.querySelector<HTMLButtonElement>('.pane-tab-activate')!;
+    const title = tab.title || 'Terminal';
+    if (activate.textContent !== title) {
+      activate.textContent = title;
+    }
+    activate.title = `${tab.title}\n${tab.processInfo}${hasBell ? '\nBell rang' : ''}`;
+    if (hasBell) {
+      activate.setAttribute('aria-label', `${title}, bell notification`);
+    } else {
+      activate.removeAttribute('aria-label');
+    }
+    const close = element.querySelector<HTMLButtonElement>('.pane-tab-close')!;
+    close.setAttribute('aria-label', `Close ${tab.title}`);
+    let bell = element.querySelector<HTMLElement>('.pane-tab-bell');
+    if (hasBell && !bell) {
+      bell = document.createElement('span');
+      bell.className = 'pane-tab-bell';
+      bell.title = 'Bell rang';
+      bell.setAttribute('aria-hidden', 'true');
+      bell.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2m6-6v-5c0-3.1-1.6-5.6-4.5-6.3V4a1.5 1.5 0 0 0-3 0v.7C7.6 5.4 6 7.9 6 11v5l-2 2v1h16v-1z"/></svg>';
+      element.insertBefore(bell, close);
+    } else if (!hasBell) {
+      bell?.remove();
     }
   }
 
