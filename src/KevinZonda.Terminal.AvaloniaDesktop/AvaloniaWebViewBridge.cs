@@ -1,13 +1,12 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
-using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
+using KevinZonda.Terminal.Terminal;
 using KevinZonda.Terminal.WebBridgeProtocol;
 using static KevinZonda.Terminal.WebBridgeProtocol.BridgePayloadReader;
 
@@ -23,7 +22,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     private readonly MainWindow _owner;
     private readonly string _workingDirectory;
     private readonly SettingsStore _settingsStore = new();
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _outputQueues = new();
+    private readonly TerminalOutputQueue _outputQueues = new();
     private readonly DispatcherTimer _outputTimer;
     private AppSettings _settings;
     private int _disposed;
@@ -221,7 +220,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
     {
         if (Volatile.Read(ref _disposed) == 0)
         {
-            _outputQueues.GetOrAdd(sessionId, static _ => new ConcurrentQueue<string>()).Enqueue(data);
+            _outputQueues.Enqueue(sessionId, data);
         }
     }
 
@@ -261,7 +260,7 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
 
     private void FlushOutput(object? sender, EventArgs eventArgs)
     {
-        foreach (var sessionId in _outputQueues.Keys)
+        foreach (var sessionId in _outputQueues.SessionIds)
         {
             FlushSessionOutput(sessionId);
         }
@@ -269,31 +268,15 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
 
     private void FlushSessionOutput(string sessionId, bool drain = false)
     {
-        if (!_outputQueues.TryGetValue(sessionId, out var queue) || queue.IsEmpty)
-        {
-            return;
-        }
-
         do
         {
-            var builder = new StringBuilder();
-            while (builder.Length < MaxOutputBatchChars && queue.TryDequeue(out var chunk))
+            var data = _outputQueues.DequeueBatch(sessionId, MaxOutputBatchChars);
+            if (data.Length == 0)
             {
-                builder.Append(chunk);
+                return;
             }
-            if (builder.Length > 0)
-            {
-                Post(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new BridgePayload
-                {
-                    Data = builder.ToString()
-                });
-            }
-        } while (drain && !queue.IsEmpty);
-
-        if (queue.IsEmpty)
-        {
-            _outputQueues.TryRemove(new KeyValuePair<string, ConcurrentQueue<string>>(sessionId, queue));
-        }
+            Post(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new BridgePayload { Data = data });
+        } while (drain);
     }
 
     private void Post(

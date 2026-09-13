@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json;
 using KevinZonda.AgentUsageMonitor;
 using KevinZonda.Terminal.Configuration;
@@ -27,7 +25,7 @@ internal sealed class WebViewBridge : IDisposable
     private readonly Action _quitApplication;
     private readonly Action<string> _openExternal;
     private readonly Func<double, Task<AppSettings>> _saveFontSize;
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _outputQueues = new();
+    private readonly TerminalOutputQueue _outputQueues = new();
     private readonly System.Windows.Forms.Timer _outputTimer;
     private AppSettings _settings;
     private int _disposed;
@@ -211,7 +209,7 @@ internal sealed class WebViewBridge : IDisposable
             return;
         }
 
-        _outputQueues.GetOrAdd(sessionId, static _ => new ConcurrentQueue<string>()).Enqueue(data);
+        _outputQueues.Enqueue(sessionId, data);
     }
 
     private void QueueExit(string sessionId, TerminalExitStatus status)
@@ -274,7 +272,7 @@ internal sealed class WebViewBridge : IDisposable
 
     private void FlushOutput(object? sender, EventArgs eventArgs)
     {
-        foreach (var sessionId in _outputQueues.Keys)
+        foreach (var sessionId in _outputQueues.SessionIds)
         {
             FlushSessionOutput(sessionId);
         }
@@ -282,29 +280,15 @@ internal sealed class WebViewBridge : IDisposable
 
     private void FlushSessionOutput(string sessionId, bool drain = false)
     {
-        if (!_outputQueues.TryGetValue(sessionId, out var queue) || queue.IsEmpty)
-        {
-            return;
-        }
-
         do
         {
-            var builder = new StringBuilder();
-            while (builder.Length < MaxOutputBatchChars && queue.TryDequeue(out var chunk))
+            var data = _outputQueues.DequeueBatch(sessionId, MaxOutputBatchChars);
+            if (data.Length == 0)
             {
-                builder.Append(chunk);
+                return;
             }
-
-            if (builder.Length > 0)
-            {
-                Post(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new { data = builder.ToString() });
-            }
-        } while (drain && !queue.IsEmpty);
-
-        if (queue.IsEmpty)
-        {
-            _outputQueues.TryRemove(new KeyValuePair<string, ConcurrentQueue<string>>(sessionId, queue));
-        }
+            Post(BridgeMessageTypes.SessionOutput, sessionId: sessionId, payload: new { data });
+        } while (drain);
     }
 
     private void Post(
@@ -337,6 +321,7 @@ internal sealed class WebViewBridge : IDisposable
         _outputTimer.Tick -= FlushOutput;
         _outputTimer.Dispose();
         _sessions.OutputReceived -= QueueOutput;
+        _outputQueues.Clear();
         _sessions.SessionExited -= QueueExit;
         _agentUsage.StatusChanged -= QueueAgentUsage;
         _systemMetrics.StatusChanged -= QueueSystemMetrics;
