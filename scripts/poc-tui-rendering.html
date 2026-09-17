@@ -1,0 +1,82 @@
+<!doctype html><meta charset="utf-8"><title>KTerm fixed-size rendering PoC</title>
+<link rel="stylesheet" href="/xterm.css">
+<style>body{background:#201020;color:white;font:14px monospace}main{display:flex;gap:16px}.host{width:620px;height:355px}pre{white-space:pre-wrap}</style>
+<h2>Fixed-size TUI: WebGL / shared-atlas producer / DOM control</h2>
+<main><div id="a" class="host"></div><div id="b" class="host"></div><div id="c" class="host"></div></main><pre id="status">Starting...</pre>
+<script src="/xterm.js"></script><script src="/webgl.js"></script>
+<script>
+window.errors=[];
+window.addEventListener('error',e=>errors.push(e.message));
+window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
+const opts={cols:64,rows:18,fontFamily:'Cascadia Mono, Cascadia Code, Consolas, Microsoft YaHei, monospace',fontSize:14,lineHeight:1.12,cursorBlink:false,windowsPty:{backend:'conpty',buildNumber:19045},theme:{background:'#2c0922',foreground:'#eeeeee'},allowProposedApi:true};
+const terminals=['a','b','c'].map(id=>{const t=new Terminal(opts);t.open(document.getElementById(id));return t;});
+const addons=[0,1].map(i=>{const a=new WebglAddon.WebglAddon({preserveDrawingBuffer:true});terminals[i].loadAddon(a);a.onContextLoss(()=>errors.push('context lost '+i));return a;});
+const write=(t,s)=>new Promise(r=>t.write(s,r));
+const frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+const buffer=t=>Array.from({length:t.rows},(_,y)=>{const line=t.buffer.active.getLine(t.buffer.active.viewportY+y);return Array.from({length:t.cols},(_,x)=>{const c=line.getCell(x);return[c.getChars(),c.getWidth(),c.getFgColor(),c.getBgColor(),c.isBold(),c.isInverse()];});});
+const pixels=r=>{const gl=r._gl;const a=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,a);return a;};
+const different=(a,b)=>{let n=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])n++;return n;};
+const results=[];
+function audit(label){
+  const r=addons[0]._renderer;
+  const before=pixels(r);
+  const oldModel=r._glyphRenderer.value._vertices.attributes.slice();
+  r._clearModel(true);r.renderRows(0,17);
+  const after=pixels(r);
+  const result={label,pixelBytesChangedByFullRebuild:different(before,after),vertexValuesChanged:different(oldModel,r._glyphRenderer.value._vertices.attributes),buffersEqual:JSON.stringify(buffer(terminals[0]))===JSON.stringify(buffer(terminals[2])),atlasPages:r._charAtlas.pages.length,layoutVersion:r._charAtlas.pageLayoutVersion};
+  results.push(result);return result;
+}
+const base='\x1b[?25l\x1b[2J\x1b[H'+Array.from({length:18},(_,y)=>`\x1b[${y+1};1H\x1b[0m${y.toString().padStart(2,'0')} 测试终端 Rendering AVD Ask anything ── │ ░▒▓`).join('');
+async function paired(s){await Promise.all([write(terminals[0],s),write(terminals[2],s)]);await frame();}
+window.done=(async()=>{
+  await Promise.all(terminals.map(t=>write(t,base)));await frame();
+  const r=addons[0]._renderer,atlas=r._charAtlas;
+  const ext=r._gl.getExtension('WEBGL_debug_renderer_info');
+  window.environment={sharedAtlas:atlas===addons[1]._renderer._charAtlas,gpu:ext?r._gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):'unknown',dpr:devicePixelRatio,cols:64,rows:18,canvas:[r._canvas.width,r._canvas.height],expectedCanvas:r.dimensions.device.canvas,viewport:Array.from(r._gl.getParameter(r._gl.VIEWPORT))};
+  audit('baseline');
+  for(let i=0;i<120;i++){
+    let stream='\x1b[H';
+    for(let y=0;y<18;y++){
+      stream+=`\x1b[${y+1};1H`;
+      for(let x=0;x<30;x++){
+        const n=i*540+y*30+x;
+        stream+=`\x1b[38;2;${n%251};${(n*17)%253};${(n*71)%255}m${String.fromCodePoint(0x4e00+n%18000)}`;
+      }
+    }
+    await write(terminals[1],stream);
+    // Keep most victim rows untouched, as a running TUI does.
+    await paired(`\x1b[18;1H\x1b[0m\x1b[2Kprogress ${i.toString().padStart(3,'0')} ⠋ 测试`);
+    if(i%10===0)audit('shared atlas churn '+i);
+  }
+  audit('shared atlas churn final');
+  // Exercise the public clear path without resizing any terminal.
+  addons[1].clearTextureAtlas();await frame();
+  await paired('\x1b[18;1H\x1b[0m\x1b[2Kafter sibling atlas clear');audit('sibling atlas clear');
+  for(let i=0;i<40;i++){
+    await paired(`\x1b[?2026h\x1b[5;1H\x1b[48;2;70;38;61m\x1b[2K${' 背景覆盖 TUI '.repeat(4)}\x1b[0m\x1b[6;1H\x1b[2Kframe ${i} e\u0301 中🙂\x1b[?2026l`);
+    if(i%10===0)audit('synchronized incremental output '+i);
+  }
+  // Churn the observed terminal itself, retaining a static header and footer.
+  for(let i=0;i<60;i++){
+    let s='\x1b[?2026h';
+    for(let y=7;y<=16;y++){
+      s+=`\x1b[${y};1H\x1b[2K`;
+      for(let x=0;x<28;x++){
+        const n=i*280+y*28+x;
+        s+=`\x1b[38;2;${n%251};${(n*37)%253};${(n*97)%255}m${String.fromCodePoint(0x4e00+n%18000)}`;
+      }
+    }
+    await paired(s+'\x1b[0m\x1b[?2026l');
+    if(i%10===0)audit('single terminal glyph churn '+i);
+  }
+  audit('final');
+  // Explicit positive control: damage vertices only to verify detection works.
+  // This is injected damage, never evidence of a spontaneous reproduction.
+  r._glyphRenderer.value._vertices.attributes.fill(0,0,64*11);
+  r._rectangleRenderer.value.renderBackgrounds();r._glyphRenderer.value.render(r._model);
+  const control=audit('INJECTED damage: detector positive control');
+  const report={environment,results,errors,detectorWorks:control.pixelBytesChangedByFullRebuild>0};
+  document.getElementById('status').textContent=JSON.stringify(report,null,2);
+  window.report=report;return report;
+})();
+</script>

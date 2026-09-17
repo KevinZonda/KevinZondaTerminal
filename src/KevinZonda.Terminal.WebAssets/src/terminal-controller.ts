@@ -1,5 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit';
-import type { LigaturesAddon } from '@xterm/addon-ligatures';
+import type { LigaturesAddon } from './ligatures-addon';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -499,7 +499,7 @@ export class TerminalController {
     let addon: LigaturesAddon | undefined;
     if (this.ligaturesEnabled) {
       try {
-        const module = await import('@xterm/addon-ligatures');
+        const module = await import('./ligatures-addon');
         if (revision !== this.ligaturesRevision || this.disposed || !this.ligaturesEnabled) {
           return;
         }
