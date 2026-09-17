@@ -12,6 +12,7 @@ public enum UsageSource
     CodexAppServer,
     KimiCodeApiKey,
     KimiCodeCliCredential,
+    KimiCodeManagedOAuth,
 }
 
 public sealed record UsageWindow(

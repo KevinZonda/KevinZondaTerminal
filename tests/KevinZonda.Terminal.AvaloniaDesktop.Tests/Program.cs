@@ -7,12 +7,6 @@ using Avalonia.Input;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
-{
-    Console.WriteLine("SKIP system metrics are implemented for macOS and Linux");
-    return;
-}
-
 if (args.Contains("--live-agent-usage", StringComparer.OrdinalIgnoreCase))
 {
     await TestLiveAgentUsageAsync();
@@ -46,6 +40,13 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
 await TestSettingsStoreAsync();
 TestSourceGeneratedBridgeJson();
 TestTerminalThemeCatalog();
+
+Console.WriteLine("PASS shared settings persistence and Web bridge protocol");
+if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
+{
+    Console.WriteLine("SKIP system metrics are implemented for macOS and Linux");
+    return;
+}
 
 if (OperatingSystem.IsMacOS())
 {
@@ -199,6 +200,7 @@ static async Task TestSettingsStoreAsync()
 
         var store = new SettingsStore(path);
         var loaded = store.Load();
+        Require(loaded.Indicators.KimiUsageMode == "Passive", "Existing settings must default to Passive Kimi usage.");
         Require(loaded.Shell.Profile == "msys2",
             "The shared settings model did not load the Windows shell profile.");
         Require(loaded.ConHost.EnhancedOpenConsole,
@@ -233,7 +235,9 @@ static async Task TestSettingsStoreAsync()
             {
                 ShowWorkspaceIndicator = false,
                 ShowRemainingUsage = true,
-                AutoRenewKimiToken = true
+                AutoRenewKimiToken = true,
+                KimiUsageMode = "Active",
+                KimiOAuthRegion = "global"
             },
             Bell = new BellSettings
             {
@@ -254,6 +258,12 @@ static async Task TestSettingsStoreAsync()
         });
 
         Require(saved.Theme.Name == "Ubuntu", "The selected terminal theme was not saved.");
+        var reloaded = store.Load();
+        Require(reloaded.Indicators.KimiUsageMode == "Active" && reloaded.Indicators.KimiOAuthRegion == "global",
+            "Kimi Active mode and region did not survive saving and reloading.");
+        Require(!reloaded.Indicators.AutoRenewKimiToken, "The retired CLI renewal setting must stay disabled.");
+        Require(IndicatorSettings.Normalize(new IndicatorSettings { KimiUsageMode = "unknown", KimiOAuthRegion = "unknown" })
+            is { KimiUsageMode: "Passive", KimiOAuthRegion: "mainland-cn" }, "Invalid Kimi settings must use safe defaults.");
         var root = JsonNode.Parse(await File.ReadAllTextAsync(path)) as JsonObject
             ?? throw new InvalidOperationException("The saved settings file is not a JSON object.");
         Require(root["shell"]?["profile"]?.GetValue<string>() == "msys2",

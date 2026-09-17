@@ -177,11 +177,17 @@ internal sealed record IndicatorSettings
 
     public bool AutoRenewKimiToken { get; init; }
 
+    public string KimiUsageMode { get; init; } = "Passive";
+
+    public string KimiOAuthRegion { get; init; } = "mainland-cn";
+
     internal static IndicatorSettings Normalize(IndicatorSettings? settings) => new()
     {
         ShowWorkspaceIndicator = settings?.ShowWorkspaceIndicator ?? true,
         ShowRemainingUsage = settings?.ShowRemainingUsage ?? false,
-        AutoRenewKimiToken = false
+        AutoRenewKimiToken = false,
+        KimiUsageMode = settings?.KimiUsageMode == "Active" ? "Active" : "Passive",
+        KimiOAuthRegion = settings?.KimiOAuthRegion == "global" ? "global" : "mainland-cn"
     };
 }
 

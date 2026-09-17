@@ -135,9 +135,28 @@
           <TextBlock Classes="description" Margin="24,0,0,10"
                      Text="Display remaining percentages for Codex and Kimi usage limits." />
 
-          <TextBlock Classes="description" Margin="0,10,0,0"
-                     Text="Kimi credentials are managed by Kimi Code CLI. Run kimi login if usage credentials expire." />
         </StackPanel>
+      </TabItem>
+
+      <TabItem Header="Kimi Usage">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="18" Spacing="10">
+            <TextBlock Classes="field-label" Text="Kimi usage authentication" />
+            <ComboBox x:Name="KimiUsageModeBox" HorizontalAlignment="Stretch" />
+            <TextBlock Classes="description"
+                       Text="Passive reads CLI credentials without renewal. Active signs in separately and renews its own credentials." />
+            <TextBlock Classes="field-label" Text="Active login region" />
+            <ComboBox x:Name="KimiOAuthRegionBox" HorizontalAlignment="Stretch" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button x:Name="KimiLoginButton" Classes="action" Content="Log in" />
+              <Button x:Name="KimiLogoutButton" Classes="action" Content="Log out" />
+              <Button x:Name="KimiLoginCancelButton" Classes="action" Content="Cancel login" />
+            </StackPanel>
+            <TextBlock x:Name="KimiOAuthStatusText" TextWrapping="Wrap" />
+            <TextBox x:Name="KimiVerificationText" IsReadOnly="True" TextWrapping="Wrap"
+                     AcceptsReturn="True" Height="90" IsVisible="False" />
+          </StackPanel>
+        </ScrollViewer>
       </TabItem>
 
       <TabItem Header="Behaviour">

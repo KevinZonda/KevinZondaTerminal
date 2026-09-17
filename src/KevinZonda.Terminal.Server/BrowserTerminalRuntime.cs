@@ -1,5 +1,6 @@
 using System.Text;
 using KevinZonda.AgentUsageMonitor;
+using KevinZonda.AgentUsageMonitor.KimiCode;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.ConPty;
 using KevinZonda.SystemMetrics;
@@ -61,7 +62,10 @@ internal sealed class BrowserTerminalRuntime : IAsyncDisposable
 
     private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
     {
-        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+        KimiAuthenticationMode = settings.Indicators.KimiUsageMode == "Active"
+            ? KimiUsageAuthenticationMode.Active : KimiUsageAuthenticationMode.Passive,
+        KimiRegion = settings.Indicators.KimiOAuthRegion == "global"
+            ? KimiOAuthRegion.Global : KimiOAuthRegion.MainlandChina
     };
 
     internal string Id { get; }

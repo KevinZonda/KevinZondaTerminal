@@ -65,6 +65,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cross-platform agent process tree detection", TestAgentProcessTreeAsync),
     ("Agent monitor service lifecycle", TestAgentMonitorServiceLifecycleAsync),
     ("Agent monitor detects CLI credential renewal before the usage interval", TestAgentMonitorCredentialPollingAsync),
+    ("Kimi Active owns OAuth login and credential rotation", TestKimiActiveOAuthAsync),
+    ("Kimi reads the current quota response", TestKimiQuotaResponseAsync),
+    ("Kimi Active cannot restore credentials after logout", TestKimiLogoutDuringLoginAsync),
+    ("Kimi Active cancels pending device authorization", TestKimiLoginCancellationAsync),
+    ("Kimi Active keeps international authorization separate", TestKimiGlobalAuthorizationAsync),
+    ("Kimi Active recovers a 401 or requires its own login", TestKimiActiveUnauthorizedAsync),
+    ("Kimi mode changes ignore an earlier usage response", TestKimiModeSwitchAsync),
 };
 
 var failures = 0;
@@ -162,6 +169,253 @@ static async Task TestAgentMonitorCredentialPollingAsync()
     await recovered.Task.WaitAsync(TimeSpan.FromSeconds(6));
     await Task.Delay(TimeSpan.FromSeconds(3));
     Equal(1, Volatile.Read(ref requests));
+}
+
+static async Task TestKimiActiveOAuthAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("passive-token");
+    var cliPath = Path.Combine(fixture.Home, "credentials", "kimi-code.json");
+    var originalCli = File.ReadAllText(cliPath);
+    var tokenPath = Path.Combine(fixture.Home, "kimi-token.json");
+    var refreshes = 0;
+    var deviceIds = new HashSet<string>();
+    using var http = new HttpClient(new StubHandler(request =>
+    {
+        Equal("KevinZonda Terminal", request.Headers.GetValues("X-Msh-Device-Name").Single());
+        deviceIds.Add(request.Headers.GetValues("X-Msh-Device-Id").Single());
+        if (request.RequestUri!.AbsolutePath == "/api/oauth/device_authorization")
+        {
+            return Json("""{"device_code":"example-device-code","user_code":"EXAMPLE","verification_uri":"https://auth.kimi.com/activate","verification_uri_complete":"https://auth.kimi.com/activate?code=EXAMPLE","interval":1,"expires_in":60}""");
+        }
+        if (request.RequestUri.AbsolutePath == "/api/oauth/token")
+        {
+            var form = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            if (form.Contains("grant_type=refresh_token", StringComparison.Ordinal))
+            {
+                refreshes++;
+                Contains("refresh_token=active-refresh", form);
+                return Json("""{"access_token":"rotated-access","refresh_token":"rotated-refresh","expires_in":3600}""");
+            }
+            Contains("device_code=example-device-code", form);
+            return Json("""{"access_token":"active-access","refresh_token":"active-refresh","expires_in":120}""");
+        }
+        Equal("Bearer rotated-access", request.Headers.Authorization!.ToString());
+        return Json("""{"usage":{"limit":100,"used":40}}""");
+    }));
+    var oauth = new KimiOAuthManager(http, tokenPath);
+    await oauth.LoginAsync(KimiOAuthRegion.MainlandChina, data =>
+    {
+        Equal("EXAMPLE", data.UserCode);
+        return Task.CompletedTask;
+    });
+    Equal(true, (await new KimiOAuthManager(http, tokenPath).GetStatusAsync()).IsLoggedIn);
+    var client = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
+    {
+        AuthenticationMode = KimiUsageAuthenticationMode.Active,
+        ActiveTokenPath = tokenPath,
+        KimiCodeHome = fixture.Home
+    });
+    var results = await Task.WhenAll(client.GetUsageAsync(), new KimiCodeUsageClient(http, new KimiCodeUsageOptions
+    {
+        AuthenticationMode = KimiUsageAuthenticationMode.Active,
+        ActiveTokenPath = tokenPath
+    }).GetUsageAsync());
+    Equal(UsageSource.KimiCodeManagedOAuth, results[0].Source);
+    Equal(40d, results[1].Primary!.UsedPercent);
+    Equal(1, refreshes);
+    Equal(1, deviceIds.Count);
+    Equal(originalCli, File.ReadAllText(cliPath));
+    if (OperatingSystem.IsWindows())
+        Equal(false, File.ReadAllText(tokenPath).Contains("rotated-refresh", StringComparison.Ordinal));
+    else
+        Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(tokenPath));
+    await oauth.LogoutAsync();
+    Equal(false, (await oauth.GetStatusAsync()).IsLoggedIn);
+    await ExpectUsageErrorAsync(() => client.GetUsageAsync(), UsageErrorCode.MissingCredential);
+}
+
+static async Task TestKimiQuotaResponseAsync()
+{
+    var client = new KimiCodeUsageClient(new HttpClient(new StubHandler(_ => Json("""
+        {"usages":{
+          "limit_5h":{"used_ratio":0.25,"reset_time":"2026-09-20T12:00:00Z"},
+          "limit_7d":{"used_ratio":0.4},
+          "limit_month_total":{"used_ratio":0.1}
+        }}
+        """))), new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.ApiKey, ApiKey = "example-api-key" });
+    var snapshot = await client.GetUsageAsync();
+    Equal(40d, snapshot.Primary!.UsedPercent);
+    Equal(25d, snapshot.Secondary!.UsedPercent);
+    Equal(10d, snapshot.ExtraWindows.Single().UsedPercent);
+}
+
+static async Task TestKimiLogoutDuringLoginAsync()
+{
+    using var fixture = new KimiCliFixture();
+    var tokenPath = Path.Combine(fixture.Home, "kimi-token.json");
+    using var http = new HttpClient(new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("device_authorization")
+        ? DeviceAuthorizationResponse()
+        : Json("""{"access_token":"late-access","refresh_token":"late-refresh","expires_in":3600}""")));
+    var oauth = new KimiOAuthManager(http, tokenPath);
+    await ExpectOAuthErrorAsync(() => oauth.LoginAsync(KimiOAuthRegion.MainlandChina, async _ =>
+        await new KimiOAuthManager(http, tokenPath).LogoutAsync()), UsageErrorCode.InvalidCredential);
+    Equal(false, (await oauth.GetStatusAsync()).IsLoggedIn);
+}
+
+static async Task TestKimiLoginCancellationAsync()
+{
+    using var fixture = new KimiCliFixture();
+    using var cancellation = new CancellationTokenSource();
+    var requests = 0;
+    using var http = new HttpClient(new StubHandler(_ => { requests++; return DeviceAuthorizationResponse(); }));
+    var oauth = new KimiOAuthManager(http, Path.Combine(fixture.Home, "kimi-token.json"));
+    try
+    {
+        await oauth.LoginAsync(KimiOAuthRegion.MainlandChina, _ =>
+        {
+            cancellation.Cancel();
+            return Task.CompletedTask;
+        }, cancellation.Token);
+        throw new InvalidOperationException("Cancelled login must not succeed.");
+    }
+    catch (OperationCanceledException) { }
+    Equal(1, requests);
+    Equal(false, (await oauth.GetStatusAsync()).IsLoggedIn);
+}
+
+static async Task TestKimiGlobalAuthorizationAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("passive-token");
+    var tokenPath = Path.Combine(fixture.Home, "kimi-token.json");
+    using var http = new HttpClient(new StubHandler(request =>
+    {
+        if (request.Method == HttpMethod.Post)
+        {
+            Equal("auth.kimi.ai", request.RequestUri!.Host);
+            return request.RequestUri.AbsolutePath.EndsWith("device_authorization")
+                ? DeviceAuthorizationResponse(global: true)
+                : Json("""{"access_token":"global-access","refresh_token":"global-refresh","expires_in":3600}""");
+        }
+        Equal("https://api.kimi.ai/coding/v1/usages", request.RequestUri!.AbsoluteUri);
+        Equal("Bearer global-access", request.Headers.Authorization!.ToString());
+        return Json("""{"usages":{"limit_7d":{"used_ratio":0.2}}}""");
+    }));
+    var oauth = new KimiOAuthManager(http, tokenPath);
+    await oauth.LoginAsync(KimiOAuthRegion.Global, _ => Task.CompletedTask);
+    Equal(KimiOAuthRegion.Global, (await oauth.GetStatusAsync()).Region!.Value);
+    var active = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
+    {
+        AuthenticationMode = KimiUsageAuthenticationMode.Active, ActiveRegion = KimiOAuthRegion.Global, ActiveTokenPath = tokenPath
+    });
+    Equal(20d, (await active.GetUsageAsync()).Primary!.UsedPercent);
+    var wrongRegion = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
+    {
+        AuthenticationMode = KimiUsageAuthenticationMode.Active, ActiveTokenPath = tokenPath, KimiCodeHome = fixture.Home
+    });
+    await ExpectUsageErrorAsync(() => wrongRegion.GetUsageAsync(), UsageErrorCode.MissingCredential);
+}
+
+static async Task TestKimiActiveUnauthorizedAsync()
+{
+    foreach (var revoked in new[] { false, true })
+    {
+        using var fixture = new KimiCliFixture();
+        fixture.WriteCredential("passive-token");
+        var refreshes = 0;
+        using var http = new HttpClient(new StubHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("device_authorization")) return DeviceAuthorizationResponse();
+            if (request.Method == HttpMethod.Post)
+            {
+                var form = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                if (form.Contains("grant_type=refresh_token", StringComparison.Ordinal))
+                {
+                    refreshes++;
+                    return revoked
+                        ? new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("""{"error":"invalid_grant"}""") }
+                        : Json("""{"access_token":"new-active","refresh_token":"new-refresh","expires_in":3600}""");
+                }
+                return Json("""{"access_token":"old-active","refresh_token":"old-refresh","expires_in":3600}""");
+            }
+            return request.Headers.Authorization!.Parameter == "old-active"
+                ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                : Json("""{"usage":{"limit":100,"used":20}}""");
+        }));
+        var tokenPath = Path.Combine(fixture.Home, "kimi-token.json");
+        var oauth = new KimiOAuthManager(http, tokenPath);
+        await oauth.LoginAsync(KimiOAuthRegion.MainlandChina, _ => Task.CompletedTask);
+        var active = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
+        {
+            AuthenticationMode = KimiUsageAuthenticationMode.Active, ActiveTokenPath = tokenPath, KimiCodeHome = fixture.Home
+        });
+        if (revoked)
+        {
+            await ExpectUsageErrorAsync(() => active.GetUsageAsync(), UsageErrorCode.InvalidCredential);
+            Equal(false, (await oauth.GetStatusAsync()).IsLoggedIn);
+            await ExpectUsageErrorAsync(() => active.GetUsageAsync(), UsageErrorCode.MissingCredential);
+        }
+        else Equal(20d, (await active.GetUsageAsync()).Primary!.UsedPercent);
+        Equal(1, refreshes);
+    }
+}
+
+static async Task TestKimiModeSwitchAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("passive-token");
+    var passiveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var passiveResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var http = new HttpClient(new AsyncStubHandler(async (request, cancellationToken) =>
+    {
+        if (request.RequestUri!.AbsolutePath.EndsWith("device_authorization")) return DeviceAuthorizationResponse();
+        if (request.Method == HttpMethod.Post)
+            return Json("""{"access_token":"active-token","refresh_token":"active-refresh","expires_in":3600}""");
+        if (request.Headers.Authorization!.Parameter == "passive-token")
+        {
+            passiveStarted.TrySetResult();
+            return await passiveResponse.Task.WaitAsync(cancellationToken);
+        }
+        Equal("Bearer active-token", request.Headers.Authorization.ToString());
+        return Json("""{"usages":{"limit_7d":{"used_ratio":0.3}}}""");
+    }));
+    var tokenPath = Path.Combine(fixture.Home, "kimi-token.json");
+    await new KimiOAuthManager(http, tokenPath).LoginAsync(KimiOAuthRegion.MainlandChina, _ => Task.CompletedTask);
+    await using var service = new AgentUsageMonitorService(() => Array.Empty<int>(), http,
+        (_, _) => Task.FromResult<IReadOnlySet<UsageProvider>>(new HashSet<UsageProvider> { UsageProvider.KimiCode }),
+        new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+    var activeReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    service.StatusChanged += status =>
+    {
+        if (status.Providers.SingleOrDefault() is { State: "ready", Source: "Active OAuth" }) activeReady.TrySetResult();
+    };
+    service.Start();
+    await passiveStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    service.UpdateOptions(new AgentUsageMonitorOptions
+    {
+        KimiAuthenticationMode = KimiUsageAuthenticationMode.Active, KimiActiveTokenPath = tokenPath
+    });
+    Equal(true, service.RequestRefresh(UsageProvider.KimiCode));
+    await activeReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    passiveResponse.TrySetResult(Json("""{"usage":{"limit":100,"used":99}}"""));
+    await Task.Delay(TimeSpan.FromSeconds(2.5));
+    Equal("Active OAuth", service.Current.Providers.Single().Source);
+    Equal(30d, service.Current.Providers.Single().Windows.Single().UsedPercent);
+}
+
+static HttpResponseMessage DeviceAuthorizationResponse(bool global = false) => Json(JsonSerializer.Serialize(new
+{
+    device_code = "example-device-code", user_code = "EXAMPLE",
+    verification_uri_complete = global ? "https://auth.kimi.ai/activate" : "https://auth.kimi.com/activate",
+    interval = 1, expires_in = 60
+}));
+
+static async Task ExpectOAuthErrorAsync(Func<Task> action, UsageErrorCode expected)
+{
+    try { await action(); }
+    catch (UsageException exception) { Equal(expected, exception.Code); return; }
+    throw new InvalidOperationException($"Expected OAuth error {expected}.");
 }
 
 static async Task TestKimiApiAsync()
@@ -649,4 +903,10 @@ sealed class KimiCliFixture : IDisposable
         }));
 
     public void Dispose() => Directory.Delete(Home, recursive: true);
+}
+
+sealed class AsyncStubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        handler(request, cancellationToken);
 }

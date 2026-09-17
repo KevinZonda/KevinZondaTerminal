@@ -21,6 +21,14 @@ internal static class KimiCodeUsageParser
             : null;
 
         var limitWindows = ParseLimits(root.Property("limits"));
+        if (root.Property("usages") is { } quotas)
+        {
+            primary = ParseQuota(quotas.Property("limit_7d"), "Weekly usage", WeeklyWindow) ?? primary;
+            if (ParseQuota(quotas.Property("limit_5h"), "5-hour usage", DefaultRateWindow) is { } fiveHour)
+                limitWindows.Insert(0, fiveHour);
+            if (ParseQuota(quotas.Property("limit_month_total"), "Monthly usage", null) is { } monthly)
+                limitWindows.Add(monthly);
+        }
         var (credits, budget) = ParseBoosterWallet(root.Property("boosterWallet", "booster_wallet"));
         if (primary is null && limitWindows.Count == 0 && credits is null && budget is null)
         {
@@ -40,6 +48,13 @@ internal static class KimiCodeUsageParser
             null,
             null,
             updatedAt);
+    }
+
+    private static UsageWindow? ParseQuota(JsonElement? value, string name, TimeSpan? window)
+    {
+        if (value?.Double("used_ratio") is not { } ratio || !double.IsFinite(ratio)) return null;
+        DateTimeOffset? resetsAt = DateTimeOffset.TryParse(value.Value.String("reset_time"), out var reset) ? reset : null;
+        return new UsageWindow(name, JsonHelpers.ClampPercent(ratio * 100), window, resetsAt);
     }
 
     private static List<UsageWindow> ParseLimits(JsonElement? value)

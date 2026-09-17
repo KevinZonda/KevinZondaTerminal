@@ -55,6 +55,8 @@ export interface IndicatorSettings {
   showWorkspaceIndicator: boolean;
   showRemainingUsage: boolean;
   autoRenewKimiToken: boolean;
+  kimiUsageMode: 'Passive' | 'Active';
+  kimiOAuthRegion: 'mainland-cn' | 'global';
 }
 
 export interface WorkspaceBehaviorSettings {
@@ -146,7 +148,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   indicators: {
     showWorkspaceIndicator: true,
     showRemainingUsage: false,
-    autoRenewKimiToken: false
+    autoRenewKimiToken: false,
+    kimiUsageMode: 'Passive',
+    kimiOAuthRegion: 'mainland-cn'
   },
   workspace: {
     lastTabClosedBehavior: 'OpenNewTab',
@@ -485,7 +489,9 @@ export class NativeBridge {
       indicators: {
         showWorkspaceIndicator: indicators.showWorkspaceIndicator !== false,
         showRemainingUsage: indicators.showRemainingUsage === true,
-        autoRenewKimiToken: indicators.autoRenewKimiToken === true
+        autoRenewKimiToken: false,
+        kimiUsageMode: indicators.kimiUsageMode === 'Active' ? 'Active' : 'Passive',
+        kimiOAuthRegion: indicators.kimiOAuthRegion === 'global' ? 'global' : 'mainland-cn'
       },
       workspace: {
         lastTabClosedBehavior: workspace.lastTabClosedBehavior === 'CloseWorkspace'

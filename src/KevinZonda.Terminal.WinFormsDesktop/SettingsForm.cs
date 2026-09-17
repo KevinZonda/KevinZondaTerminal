@@ -1,5 +1,7 @@
 using System.Drawing.Text;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using KevinZonda.AgentUsageMonitor.KimiCode;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Interop;
 
@@ -23,6 +25,16 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _cursorBlink = new();
     private readonly CheckBox _showWorkspaceIndicator = new();
     private readonly CheckBox _showRemainingUsage = new();
+    private readonly ComboBox _kimiMode = new();
+    private readonly ComboBox _kimiRegion = new();
+    private readonly Button _kimiLogin = CreateButton("Log in");
+    private readonly Button _kimiLogout = CreateButton("Log out");
+    private readonly Button _kimiLoginCancel = CreateButton("Cancel login");
+    private readonly Label _kimiStatus = new() { AutoSize = true, MaximumSize = new Size(430, 0) };
+    private readonly TextBox _kimiVerification = new() { ReadOnly = true, Multiline = true, Height = 76, Dock = DockStyle.Top };
+    private readonly HttpClient _oauthHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly KimiOAuthManager _kimiOAuth;
+    private CancellationTokenSource? _kimiLoginCancellation;
     private readonly ComboBox _bellSound = new();
     private readonly ComboBox _tabVisualFeedback = new();
     private readonly ComboBox _workspaceVisualFeedback = new();
@@ -44,6 +56,7 @@ internal sealed class SettingsForm : Form
 
     internal SettingsForm(AppSettings settings)
     {
+        _kimiOAuth = new KimiOAuthManager(_oauthHttp);
         Text = "KevinZonda Terminal Settings";
         BackColor = SurfaceColor;
         ForeColor = Color.FromArgb(216, 222, 233);
@@ -66,6 +79,7 @@ internal sealed class SettingsForm : Form
         PopulateBellSounds();
         PopulateWorkspaceBehaviors();
         ApplyValues(settings);
+        Shown += async (_, _) => await RefreshKimiStatusAsync();
     }
 
     internal AppSettings Settings => AppSettings.Normalize(new AppSettings
@@ -90,7 +104,9 @@ internal sealed class SettingsForm : Form
         Indicators = new IndicatorSettings
         {
             ShowWorkspaceIndicator = _showWorkspaceIndicator.Checked,
-            ShowRemainingUsage = _showRemainingUsage.Checked
+            ShowRemainingUsage = _showRemainingUsage.Checked,
+            KimiUsageMode = _kimiMode.SelectedIndex == 1 ? "Active" : "Passive",
+            KimiOAuthRegion = _kimiRegion.SelectedIndex == 1 ? "global" : "mainland-cn"
         },
         Bell = SelectedBellSettings(),
         Workspace = SelectedWorkspaceBehaviorSettings(),
@@ -118,6 +134,8 @@ internal sealed class SettingsForm : Form
 
         if (disposing)
         {
+            _kimiLoginCancellation?.Cancel();
+            _oauthHttp.Dispose();
             foreach (var previewFont in _previewFonts)
             {
                 previewFont.Dispose();
@@ -151,6 +169,7 @@ internal sealed class SettingsForm : Form
             }
         }
 
+        _kimiLoginCancellation?.Cancel();
         base.OnFormClosing(eventArgs);
     }
 
@@ -172,6 +191,7 @@ internal sealed class SettingsForm : Form
         _tabs.TabPages.Add(CreateFontPage());
         _tabs.TabPages.Add(CreateThemePage());
         _tabs.TabPages.Add(CreateIndicatorsPage());
+        _tabs.TabPages.Add(CreateKimiUsagePage());
         _tabs.TabPages.Add(CreateBehaviorPage());
         _shellPage = CreateShellPage();
         _tabs.TabPages.Add(_shellPage);
@@ -479,16 +499,115 @@ internal sealed class SettingsForm : Form
         description.Margin = new Padding(22, 0, 0, 0);
         layout.Controls.Add(description, 0, 3);
 
-        var credentialDescription = CreateLabel(
-            "Kimi credentials are managed by Kimi Code CLI. Run kimi login if usage credentials expire.");
-        credentialDescription.ForeColor = Color.FromArgb(170, 179, 192);
-        credentialDescription.AutoSize = true;
-        credentialDescription.MaximumSize = new Size(430, 0);
-        credentialDescription.Margin = new Padding(0, 18, 0, 0);
-        layout.Controls.Add(credentialDescription, 0, 4);
-
         page.Controls.Add(layout);
         return page;
+    }
+
+    private TabPage CreateKimiUsagePage()
+    {
+        var page = new TabPage("Kimi Usage")
+        {
+            BackColor = SurfaceColor, ForeColor = ForeColor, Padding = new Padding(16), AutoScroll = true
+        };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, BackColor = SurfaceColor };
+        ConfigureField(_kimiMode);
+        _kimiMode.DropDownStyle = ComboBoxStyle.DropDownList;
+        _kimiMode.Items.AddRange(["Passive — use Kimi Code CLI", "Active — independent OAuth"]);
+        _kimiMode.Dock = DockStyle.Top;
+        ConfigureField(_kimiRegion);
+        _kimiRegion.DropDownStyle = ComboBoxStyle.DropDownList;
+        _kimiRegion.Items.AddRange(["Mainland China", "Global"]);
+        _kimiRegion.Dock = DockStyle.Top;
+        var description = CreateLabel("Passive reads CLI credentials without renewal. Active signs in separately and renews its own credentials.");
+        description.AutoSize = true;
+        description.MaximumSize = new Size(430, 0);
+        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top };
+        actions.Controls.AddRange([_kimiLogin, _kimiLogout, _kimiLoginCancel]);
+        layout.Controls.Add(CreateLabel("Kimi usage authentication"));
+        layout.Controls.Add(_kimiMode);
+        layout.Controls.Add(description);
+        layout.Controls.Add(CreateLabel("Active login region"));
+        layout.Controls.Add(_kimiRegion);
+        layout.Controls.Add(actions);
+        layout.Controls.Add(_kimiStatus);
+        layout.Controls.Add(_kimiVerification);
+        page.Controls.Add(layout);
+        _kimiMode.SelectedIndexChanged += (_, _) =>
+        {
+            _kimiLoginCancellation?.Cancel();
+            UpdateKimiControls();
+        };
+        _kimiLogin.Click += async (_, _) => await LoginKimiAsync();
+        _kimiLogout.Click += async (_, _) =>
+        {
+            try { await _kimiOAuth.LogoutAsync(); await RefreshKimiStatusAsync(); }
+            catch (Exception) { _kimiStatus.Text = "Unable to log out. Try again."; }
+        };
+        _kimiLoginCancel.Click += (_, _) => _kimiLoginCancellation?.Cancel();
+        return page;
+    }
+
+    private void UpdateKimiControls()
+    {
+        var active = _kimiMode.SelectedIndex == 1;
+        var busy = _kimiLoginCancellation is not null;
+        _kimiRegion.Enabled = active && !busy;
+        _kimiLogin.Enabled = active && !busy;
+        _kimiLogout.Enabled = active && !busy;
+        _kimiLoginCancel.Enabled = busy;
+        _kimiVerification.Visible = active && _kimiVerification.TextLength > 0;
+    }
+
+    private async Task RefreshKimiStatusAsync()
+    {
+        try
+        {
+            var status = await _kimiOAuth.GetStatusAsync();
+            if (IsDisposed) return;
+            _kimiStatus.Text = status.IsLoggedIn
+                ? $"Active authorization saved ({(status.Region == KimiOAuthRegion.Global ? "Global" : "Mainland China")})."
+                : "Active is not logged in. Passive uses Kimi Code CLI credentials.";
+        }
+        catch (Exception) { if (!IsDisposed) _kimiStatus.Text = "Unable to read Active credentials. Log in again."; }
+    }
+
+    private async Task LoginKimiAsync()
+    {
+        if (_kimiLoginCancellation is not null) return;
+        using var cancellation = new CancellationTokenSource();
+        _kimiLoginCancellation = cancellation;
+        UpdateKimiControls();
+        _kimiStatus.Text = "Requesting Kimi login…";
+        _kimiVerification.Clear();
+        var region = _kimiRegion.SelectedIndex == 1 ? KimiOAuthRegion.Global : KimiOAuthRegion.MainlandChina;
+        try
+        {
+            await _kimiOAuth.LoginAsync(region, async data => await InvokeAsync(() =>
+            {
+                if (IsDisposed || cancellation.IsCancellationRequested) return;
+                _kimiStatus.Text = "Complete authorization in your browser. Save settings to use Active mode.";
+                _kimiVerification.Text = $"Code: {data.UserCode}\r\n{data.VerificationUri}";
+                _kimiVerification.Visible = true;
+                try { Process.Start(new ProcessStartInfo(data.VerificationUri.AbsoluteUri) { UseShellExecute = true }); }
+                catch (Exception) { _kimiStatus.Text = "Open the link below in your browser and enter the code."; }
+            }), cancellation.Token);
+            if (!IsDisposed)
+            {
+                _kimiVerification.Clear();
+                await RefreshKimiStatusAsync();
+            }
+        }
+        catch (OperationCanceledException) { if (!IsDisposed) _kimiStatus.Text = "Kimi login cancelled or timed out."; }
+        catch (Exception exception)
+        {
+            if (!IsDisposed) _kimiStatus.Text = exception is KevinZonda.AgentUsageMonitor.UsageException
+                ? exception.Message : "Unable to complete Kimi login. Try again.";
+        }
+        finally
+        {
+            _kimiLoginCancellation = null;
+            if (!IsDisposed) UpdateKimiControls();
+        }
     }
 
     private TabPage CreateBehaviorPage()
@@ -719,6 +838,9 @@ internal sealed class SettingsForm : Form
 
             _showWorkspaceIndicator.Checked = normalized.Indicators.ShowWorkspaceIndicator;
             _showRemainingUsage.Checked = normalized.Indicators.ShowRemainingUsage;
+            _kimiMode.SelectedIndex = normalized.Indicators.KimiUsageMode == "Active" ? 1 : 0;
+            _kimiRegion.SelectedIndex = normalized.Indicators.KimiOAuthRegion == "global" ? 1 : 0;
+            UpdateKimiControls();
             SelectBehavior(_bellSound, normalized.Bell.Sound);
             SelectBehavior(_tabVisualFeedback, normalized.Bell.TabVisualFeedback);
             SelectBehavior(_workspaceVisualFeedback, normalized.Bell.WorkspaceVisualFeedback);

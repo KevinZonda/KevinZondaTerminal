@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using KevinZonda.AgentUsageMonitor;
+using KevinZonda.AgentUsageMonitor.KimiCode;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.ConPty;
 using KevinZonda.Terminal.Hosting;
@@ -70,7 +71,10 @@ internal sealed class MainForm : Form
 
     private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
     {
-        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+        KimiAuthenticationMode = settings.Indicators.KimiUsageMode == "Active"
+            ? KimiUsageAuthenticationMode.Active : KimiUsageAuthenticationMode.Passive,
+        KimiRegion = settings.Indicators.KimiOAuthRegion == "global"
+            ? KimiOAuthRegion.Global : KimiOAuthRegion.MainlandChina
     };
 
     protected override void OnHandleCreated(EventArgs eventArgs)

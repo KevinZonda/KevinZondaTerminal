@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using KevinZonda.AgentUsageMonitor;
+using KevinZonda.AgentUsageMonitor.KimiCode;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 using KevinZonda.Terminal.Terminal;
@@ -57,7 +58,10 @@ internal sealed class AvaloniaWebViewBridge : IDisposable
 
     private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
     {
-        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+        KimiAuthenticationMode = settings.Indicators.KimiUsageMode == "Active"
+            ? KimiUsageAuthenticationMode.Active : KimiUsageAuthenticationMode.Passive,
+        KimiRegion = settings.Indicators.KimiOAuthRegion == "global"
+            ? KimiOAuthRegion.Global : KimiOAuthRegion.MainlandChina
     };
 
     private async void HandleMessage(object? sender, WebMessageReceivedEventArgs eventArgs)

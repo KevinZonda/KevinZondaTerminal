@@ -21,7 +21,7 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
     private readonly HashSet<Task> _refreshTasks = [];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _stateLock = new();
-    private readonly IReadOnlyDictionary<UsageProvider, IUsageClient> _clients;
+    private volatile IReadOnlyDictionary<UsageProvider, IUsageClient> _clients;
     private Task? _monitorTask;
     private int _disposed;
 
@@ -31,7 +31,13 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
         : this(getRootProcessIds,
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
             new AgentProcessDetector().DetectAsync,
-            new KimiCodeUsageOptions())
+            new KimiCodeUsageOptions
+            {
+                Mode = KimiCodeUsageMode.CliCredential,
+                AuthenticationMode = options?.KimiAuthenticationMode ?? KimiUsageAuthenticationMode.Passive,
+                ActiveRegion = options?.KimiRegion ?? KimiOAuthRegion.MainlandChina,
+                ActiveTokenPath = options?.KimiActiveTokenPath
+            })
     {
     }
 
@@ -75,18 +81,38 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
     {
         ArgumentNullException.ThrowIfNull(options);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        lock (_stateLock)
+        {
+            var current = ((KimiCodeUsageClient)_clients[UsageProvider.KimiCode]).Options;
+            if (current.AuthenticationMode == options.KimiAuthenticationMode && current.ActiveRegion == options.KimiRegion
+                && current.ActiveTokenPath == options.KimiActiveTokenPath) return;
+            _clients = new Dictionary<UsageProvider, IUsageClient>(_clients)
+            {
+                [UsageProvider.KimiCode] = new KimiCodeUsageClient(_httpClient, new KimiCodeUsageOptions
+                {
+                    Mode = KimiCodeUsageMode.CliCredential,
+                    AuthenticationMode = options.KimiAuthenticationMode,
+                    ActiveRegion = options.KimiRegion,
+                    ActiveTokenPath = options.KimiActiveTokenPath
+                })
+            };
+            _providers[UsageProvider.KimiCode] = new ProviderRuntime { Active = _providers[UsageProvider.KimiCode].Active };
+        }
     }
 
     public bool RequestRefresh(UsageProvider provider)
     {
-        if (Volatile.Read(ref _disposed) != 0 || !_clients.TryGetValue(provider, out var client))
+        if (Volatile.Read(ref _disposed) != 0)
         {
             return false;
         }
 
         var now = DateTimeOffset.UtcNow;
+        IUsageClient client;
         lock (_stateLock)
         {
+            if (Volatile.Read(ref _disposed) != 0 || !_clients.TryGetValue(provider, out var selectedClient)) return false;
+            client = selectedClient;
             var runtime = _providers[provider];
             if (!runtime.Active || runtime.RefreshInProgress ||
                 runtime.LastAttempt is { } lastAttempt && now - lastAttempt < ManualRefreshCooldown)
@@ -139,7 +165,7 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
             try
             {
                 kimiCredentialVersion = await ((KimiCodeUsageClient)_clients[UsageProvider.KimiCode])
-                    .GetCliCredentialVersionAsync(_lifetime.Token).ConfigureAwait(false);
+                    .GetCredentialVersionAsync(_lifetime.Token).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -220,8 +246,11 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
             var snapshot = await client.GetUsageAsync(_lifetime.Token).ConfigureAwait(false);
             lock (_stateLock)
             {
+                if (!ReferenceEquals(client, _clients[provider])) return;
                 var runtime = _providers[provider];
                 runtime.Snapshot = snapshot;
+                if (client is KimiCodeUsageClient kimiClient)
+                    runtime.CredentialVersion = kimiClient.LastCredentialVersion;
                 runtime.Error = null;
                 runtime.RefreshInProgress = false;
             }
@@ -230,7 +259,7 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
         {
             lock (_stateLock)
             {
-                _providers[provider].RefreshInProgress = false;
+                if (ReferenceEquals(client, _clients[provider])) _providers[provider].RefreshInProgress = false;
             }
             return;
         }
@@ -238,6 +267,7 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
         {
             lock (_stateLock)
             {
+                if (!ReferenceEquals(client, _clients[provider])) return;
                 var runtime = _providers[provider];
                 runtime.Error = FriendlyError(exception);
                 runtime.RefreshInProgress = false;
@@ -327,6 +357,7 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
         UsageSource.CodexAppServer => "App server",
         UsageSource.KimiCodeApiKey => "API key",
         UsageSource.KimiCodeCliCredential => "CLI credential",
+        UsageSource.KimiCodeManagedOAuth => "Active OAuth",
         _ => source.ToString()
     };
 

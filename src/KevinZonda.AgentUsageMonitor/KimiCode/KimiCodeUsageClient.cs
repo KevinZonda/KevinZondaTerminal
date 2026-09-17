@@ -20,21 +20,26 @@ public sealed class KimiCodeUsageClient : IUsageClient
 
     public UsageProvider Provider => UsageProvider.KimiCode;
 
-    public bool AutoRenewToken => false;
+    public bool AutoRenewToken => _options.AuthenticationMode == KimiUsageAuthenticationMode.Active;
+
+    internal string? LastCredentialVersion { get; private set; }
+    internal KimiCodeUsageOptions Options => _options;
 
     public Task<UsageSnapshot> GetUsageAsync(CancellationToken cancellationToken = default) =>
         GetUsageAsync(_options, cancellationToken);
 
-    internal async Task<string> GetCliCredentialVersionAsync(CancellationToken cancellationToken)
+    internal async Task<string> GetCredentialVersionAsync(CancellationToken cancellationToken)
     {
+        if (_options.AuthenticationMode == KimiUsageAuthenticationMode.Active)
+            return await new KimiOAuthManager(_httpClient, _options.ActiveTokenPath).GetCredentialVersionAsync(cancellationToken)
+                .ConfigureAwait(false);
         var credential = await KimiCodeCredentialStore.LoadAsync(_options, cancellationToken);
         if (credential is null)
         {
             return "missing";
         }
 
-        var identity = $"{credential.AccessToken}\n{credential.ExpiresAt:O}\n{credential.BaseUri}";
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
+        return CredentialVersion(credential);
     }
 
     public async Task<UsageSnapshot> GetUsageAsync(
@@ -42,6 +47,25 @@ public sealed class KimiCodeUsageClient : IUsageClient
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+        if (options.AuthenticationMode == KimiUsageAuthenticationMode.Active)
+        {
+            var oauth = new KimiOAuthManager(_httpClient, options.ActiveTokenPath);
+            var active = await oauth.GetCredentialAsync(options.ActiveRegion, null, cancellationToken).ConfigureAwait(false);
+            LastCredentialVersion = active.State.Revision;
+            try
+            {
+                return await FetchAsync(active.State.Token!.AccessToken, UsageSource.KimiCodeManagedOAuth, options, true,
+                    active.BaseUri, cancellationToken, active.State.DeviceId).ConfigureAwait(false);
+            }
+            catch (UsageException exception) when (exception.Code == UsageErrorCode.InvalidCredential)
+            {
+                active = await oauth.GetCredentialAsync(options.ActiveRegion, active.State.Token!.AccessToken, cancellationToken)
+                    .ConfigureAwait(false);
+                LastCredentialVersion = active.State.Revision;
+                return await FetchAsync(active.State.Token!.AccessToken, UsageSource.KimiCodeManagedOAuth, options, true,
+                    active.BaseUri, cancellationToken, active.State.DeviceId).ConfigureAwait(false);
+            }
+        }
         Exception? apiFailure = null;
 
         if (options.Mode is KimiCodeUsageMode.Auto or KimiCodeUsageMode.ApiKey)
@@ -84,6 +108,7 @@ public sealed class KimiCodeUsageClient : IUsageClient
 
         try
         {
+            LastCredentialVersion = CredentialVersion(credential);
             return await FetchAsync(
                 credential.AccessToken,
                 UsageSource.KimiCodeCliCredential,
@@ -102,6 +127,7 @@ public sealed class KimiCodeUsageClient : IUsageClient
                 throw;
             }
 
+            LastCredentialVersion = CredentialVersion(latest);
             return await FetchAsync(latest.AccessToken, UsageSource.KimiCodeCliCredential, options, true, latest.BaseUri, cancellationToken);
         }
     }
@@ -141,7 +167,8 @@ public sealed class KimiCodeUsageClient : IUsageClient
         KimiCodeUsageOptions options,
         bool addCliIdentity,
         Uri baseUri,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? deviceId = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, BuildUsageUri(baseUri));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -150,14 +177,17 @@ public sealed class KimiCodeUsageClient : IUsageClient
 
         if (addCliIdentity)
         {
-            KimiCodeRequestHeaders.AddCliIdentity(request, options);
+            if (deviceId is null) KimiCodeRequestHeaders.AddCliIdentity(request, options);
+            else KimiCodeRequestHeaders.AddIdentity(request, deviceId);
         }
 
         using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         var data = await response.Content.ReadAsByteArrayAsync(cancellationToken);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            throw new UsageException(UsageErrorCode.InvalidCredential, "The Kimi Code credential was rejected. Run kimi login to renew it.");
+            throw new UsageException(UsageErrorCode.InvalidCredential, source == UsageSource.KimiCodeManagedOAuth
+                ? "Kimi Active authorization was rejected. Log in again in Settings."
+                : "The Kimi Code credential was rejected. Run kimi login to renew it.");
         }
 
         if (!response.IsSuccessStatusCode)
@@ -183,6 +213,12 @@ public sealed class KimiCodeUsageClient : IUsageClient
 
     private static string? FirstNotEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string CredentialVersion(KimiCodeCredential credential)
+    {
+        var identity = $"{credential.AccessToken}\n{credential.ExpiresAt:O}\n{credential.BaseUri}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
+    }
 
     private static bool CanFallback(Exception exception) => exception switch
     {

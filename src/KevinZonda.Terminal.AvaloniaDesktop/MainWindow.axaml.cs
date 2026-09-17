@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using KevinZonda.AgentUsageMonitor;
+using KevinZonda.AgentUsageMonitor.KimiCode;
 using KevinZonda.SystemMetrics;
 using KevinZonda.Terminal.Configuration;
 
@@ -41,7 +42,10 @@ public sealed partial class MainWindow : Window
 
     private static AgentUsageMonitorOptions CreateAgentUsageOptions(AppSettings settings) => new()
     {
-        AutoRenewKimiToken = settings.Indicators.AutoRenewKimiToken
+        KimiAuthenticationMode = settings.Indicators.KimiUsageMode == "Active"
+            ? KimiUsageAuthenticationMode.Active : KimiUsageAuthenticationMode.Passive,
+        KimiRegion = settings.Indicators.KimiOAuthRegion == "global"
+            ? KimiOAuthRegion.Global : KimiOAuthRegion.MainlandChina
     };
 
     private void InitializeComponent()

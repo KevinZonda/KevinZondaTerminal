@@ -13,6 +13,12 @@ public sealed class KimiCodeUsageOptions
 
     public KimiCodeUsageMode Mode { get; init; } = KimiCodeUsageMode.Auto;
 
+    public KimiUsageAuthenticationMode AuthenticationMode { get; init; }
+
+    public KimiOAuthRegion ActiveRegion { get; init; }
+
+    public string? ActiveTokenPath { get; init; }
+
     public string? ApiKey { get; init; }
 
     public Uri BaseUri

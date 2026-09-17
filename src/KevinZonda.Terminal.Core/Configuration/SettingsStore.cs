@@ -73,6 +73,8 @@ internal sealed class SettingsStore
         indicators["showWorkspaceIndicator"] = normalized.Indicators.ShowWorkspaceIndicator;
         indicators["showRemainingUsage"] = normalized.Indicators.ShowRemainingUsage;
         indicators["autoRenewKimiToken"] = normalized.Indicators.AutoRenewKimiToken;
+        indicators["kimiUsageMode"] = normalized.Indicators.KimiUsageMode;
+        indicators["kimiOAuthRegion"] = normalized.Indicators.KimiOAuthRegion;
 
         var workspace = GetObject(root, "workspace");
         workspace["lastTabClosedBehavior"] = normalized.Workspace.LastTabClosedBehavior;
