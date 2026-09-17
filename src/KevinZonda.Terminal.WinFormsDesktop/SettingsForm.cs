@@ -512,7 +512,7 @@ internal sealed class SettingsForm : Form
         var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, BackColor = SurfaceColor };
         ConfigureField(_kimiMode);
         _kimiMode.DropDownStyle = ComboBoxStyle.DropDownList;
-        _kimiMode.Items.AddRange(["Passive — use Kimi Code CLI", "Active — independent OAuth"]);
+        _kimiMode.Items.AddRange(["Passive - use Kimi Code CLI", "Active - independent OAuth"]);
         _kimiMode.Dock = DockStyle.Top;
         ConfigureField(_kimiRegion);
         _kimiRegion.DropDownStyle = ComboBoxStyle.DropDownList;

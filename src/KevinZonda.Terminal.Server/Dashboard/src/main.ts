@@ -415,7 +415,7 @@ function expirationLabel(value: string | null): string {
 
 function formatDurationSince(value?: string): string {
   if (!value) {
-    return '—';
+    return '-';
   }
   return formatDuration(Math.max(0, Date.now() - new Date(value).getTime()));
 }

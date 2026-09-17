@@ -99,7 +99,7 @@ internal sealed partial class SettingsWindow : Window
         _lastWorkspaceClosedBehavior.ItemsSource =
             new[] { "Quit KevinZonda Terminal", "Create a new workspace" };
         _shellExitBehavior.ItemsSource = new[] { "Keep tab open", "Close tab" };
-        _kimiMode.ItemsSource = new[] { "Passive — use Kimi Code CLI", "Active — independent OAuth" };
+        _kimiMode.ItemsSource = new[] { "Passive - use Kimi Code CLI", "Active - independent OAuth" };
         _kimiRegion.ItemsSource = new[] { "Mainland China", "Global" };
         _kimiMode.SelectionChanged += (_, _) => { _kimiLoginCancellation?.Cancel(); UpdateKimiControls(); };
         _kimiLogin.Click += async (_, _) => await LoginKimiAsync();

@@ -135,7 +135,7 @@ internal sealed class AboutForm : Form
         CancelButton = okButton;
     }
 
-    // "0.1.0+<commit>" — the SDK appends the source revision when building
+    // "0.1.0+<commit>" - the SDK appends the source revision when building
     // inside a git checkout.
     private static string InformationalVersion =>
         typeof(AboutForm).Assembly
