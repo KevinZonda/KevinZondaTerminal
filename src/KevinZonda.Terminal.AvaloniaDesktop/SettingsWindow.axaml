@@ -135,10 +135,8 @@
           <TextBlock Classes="description" Margin="24,0,0,10"
                      Text="Display remaining percentages for Codex and Kimi usage limits." />
 
-          <CheckBox x:Name="AutoRenewKimiBox"
-                    Content="Auto renew Kimi token" />
-          <TextBlock Classes="description" Margin="24,0,0,0"
-                     Text="Refresh the Kimi CLI OAuth token in memory only. Credential files are never modified." />
+          <TextBlock Classes="description" Margin="0,10,0,0"
+                     Text="Kimi credentials are managed by Kimi Code CLI. Run kimi login if usage credentials expire." />
         </StackPanel>
       </TabItem>
 

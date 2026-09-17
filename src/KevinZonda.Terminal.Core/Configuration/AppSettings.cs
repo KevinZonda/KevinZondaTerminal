@@ -181,7 +181,7 @@ internal sealed record IndicatorSettings
     {
         ShowWorkspaceIndicator = settings?.ShowWorkspaceIndicator ?? true,
         ShowRemainingUsage = settings?.ShowRemainingUsage ?? false,
-        AutoRenewKimiToken = settings?.AutoRenewKimiToken ?? false
+        AutoRenewKimiToken = false
     };
 }
 

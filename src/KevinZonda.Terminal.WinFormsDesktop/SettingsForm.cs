@@ -23,7 +23,6 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _cursorBlink = new();
     private readonly CheckBox _showWorkspaceIndicator = new();
     private readonly CheckBox _showRemainingUsage = new();
-    private readonly CheckBox _autoRenewKimiToken = new();
     private readonly ComboBox _bellSound = new();
     private readonly ComboBox _tabVisualFeedback = new();
     private readonly ComboBox _workspaceVisualFeedback = new();
@@ -91,8 +90,7 @@ internal sealed class SettingsForm : Form
         Indicators = new IndicatorSettings
         {
             ShowWorkspaceIndicator = _showWorkspaceIndicator.Checked,
-            ShowRemainingUsage = _showRemainingUsage.Checked,
-            AutoRenewKimiToken = _autoRenewKimiToken.Checked
+            ShowRemainingUsage = _showRemainingUsage.Checked
         },
         Bell = SelectedBellSettings(),
         Workspace = SelectedWorkspaceBehaviorSettings(),
@@ -481,20 +479,13 @@ internal sealed class SettingsForm : Form
         description.Margin = new Padding(22, 0, 0, 0);
         layout.Controls.Add(description, 0, 3);
 
-        _autoRenewKimiToken.AutoSize = true;
-        _autoRenewKimiToken.Text = "Auto renew Kimi token";
-        _autoRenewKimiToken.ForeColor = ForeColor;
-        _autoRenewKimiToken.BackColor = SurfaceColor;
-        _autoRenewKimiToken.Margin = new Padding(0, 18, 0, 8);
-        layout.Controls.Add(_autoRenewKimiToken, 0, 4);
-
-        var renewDescription = CreateLabel(
-            "Refresh the Kimi CLI OAuth token in memory only. Credential files are never modified.");
-        renewDescription.ForeColor = Color.FromArgb(170, 179, 192);
-        renewDescription.AutoSize = true;
-        renewDescription.MaximumSize = new Size(430, 0);
-        renewDescription.Margin = new Padding(22, 0, 0, 0);
-        layout.Controls.Add(renewDescription, 0, 5);
+        var credentialDescription = CreateLabel(
+            "Kimi credentials are managed by Kimi Code CLI. Run kimi login if usage credentials expire.");
+        credentialDescription.ForeColor = Color.FromArgb(170, 179, 192);
+        credentialDescription.AutoSize = true;
+        credentialDescription.MaximumSize = new Size(430, 0);
+        credentialDescription.Margin = new Padding(0, 18, 0, 0);
+        layout.Controls.Add(credentialDescription, 0, 4);
 
         page.Controls.Add(layout);
         return page;
@@ -728,7 +719,6 @@ internal sealed class SettingsForm : Form
 
             _showWorkspaceIndicator.Checked = normalized.Indicators.ShowWorkspaceIndicator;
             _showRemainingUsage.Checked = normalized.Indicators.ShowRemainingUsage;
-            _autoRenewKimiToken.Checked = normalized.Indicators.AutoRenewKimiToken;
             SelectBehavior(_bellSound, normalized.Bell.Sound);
             SelectBehavior(_tabVisualFeedback, normalized.Bell.TabVisualFeedback);
             SelectBehavior(_workspaceVisualFeedback, normalized.Bell.WorkspaceVisualFeedback);

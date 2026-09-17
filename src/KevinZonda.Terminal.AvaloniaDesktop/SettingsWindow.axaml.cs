@@ -25,7 +25,6 @@ internal sealed partial class SettingsWindow : Window
     private readonly ItemsControl _themePreviewPalette;
     private readonly CheckBox _workspaceIndicator;
     private readonly CheckBox _remainingUsage;
-    private readonly CheckBox _autoRenewKimi;
     private readonly ComboBox _bellSound;
     private readonly ComboBox _tabVisualFeedback;
     private readonly ComboBox _workspaceVisualFeedback;
@@ -56,7 +55,6 @@ internal sealed partial class SettingsWindow : Window
         _themePreviewPalette = Find<ItemsControl>("ThemePreviewPalette");
         _workspaceIndicator = Find<CheckBox>("WorkspaceIndicatorBox");
         _remainingUsage = Find<CheckBox>("RemainingUsageBox");
-        _autoRenewKimi = Find<CheckBox>("AutoRenewKimiBox");
         _bellSound = Find<ComboBox>("BellSoundBox");
         _tabVisualFeedback = Find<ComboBox>("TabVisualFeedbackBox");
         _workspaceVisualFeedback = Find<ComboBox>("WorkspaceVisualFeedbackBox");
@@ -113,8 +111,7 @@ internal sealed partial class SettingsWindow : Window
         Indicators = new IndicatorSettings
         {
             ShowWorkspaceIndicator = _workspaceIndicator.IsChecked == true,
-            ShowRemainingUsage = _remainingUsage.IsChecked == true,
-            AutoRenewKimiToken = _autoRenewKimi.IsChecked == true
+            ShowRemainingUsage = _remainingUsage.IsChecked == true
         },
         Bell = new BellSettings
         {
@@ -174,7 +171,6 @@ internal sealed partial class SettingsWindow : Window
             _theme.SelectedItem = normalized.Theme.Name;
             _workspaceIndicator.IsChecked = normalized.Indicators.ShowWorkspaceIndicator;
             _remainingUsage.IsChecked = normalized.Indicators.ShowRemainingUsage;
-            _autoRenewKimi.IsChecked = normalized.Indicators.AutoRenewKimiToken;
             _bellSound.SelectedIndex = normalized.Bell.Sound == BellSettings.NoneSound ? 0 : 1;
             _tabVisualFeedback.SelectedIndex = normalized.Bell.TabVisualFeedback switch
             {

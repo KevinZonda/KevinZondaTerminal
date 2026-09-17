@@ -52,13 +52,19 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Kimi API request and response", TestKimiApiAsync),
     ("Common usage client interface", TestCommonInterfaceAsync),
     ("Kimi auto falls back to CLI credential", TestKimiAutoFallbackAsync),
-    ("Kimi renews CLI token in memory only", TestKimiInMemoryRenewalAsync),
+    ("Kimi leaves expired CLI credentials to the CLI", TestKimiExpiredCredentialAsync),
+    ("Kimi retries a rejected token only after CLI credential changes", TestKimiCredentialRetryAsync),
+    ("Kimi observes CLI renewal, expiration and logout", TestKimiCredentialChangesAsync),
+    ("Kimi stops retrying rejected CLI credentials", TestKimiRetryBoundAsync),
+    ("Kimi follows the configured international CLI credential", TestKimiInternationalCredentialAsync),
+    ("Kimi rejects invalid CLI configuration without sending credentials", TestKimiInvalidConfigAsync),
     ("Kimi parses all limits and booster wallet", TestKimiCompleteUsageAsync),
     ("Kimi endpoint normalization", TestKimiEndpointAsync),
     ("Codex OAuth request and response", TestCodexOAuthAsync),
     ("Codex endpoint normalization", TestCodexEndpointAsync),
     ("Cross-platform agent process tree detection", TestAgentProcessTreeAsync),
     ("Agent monitor service lifecycle", TestAgentMonitorServiceLifecycleAsync),
+    ("Agent monitor detects CLI credential renewal before the usage interval", TestAgentMonitorCredentialPollingAsync),
 };
 
 var failures = 0;
@@ -119,6 +125,43 @@ static async Task TestAgentMonitorServiceLifecycleAsync()
     await Task.Delay(50);
     Equal(0, service.Current.Providers.Count);
     Equal(false, service.RequestRefresh(UsageProvider.Codex));
+}
+
+static async Task TestAgentMonitorCredentialPollingAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("expired-token", expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+    var requests = 0;
+    using var httpClient = new HttpClient(new StubHandler(request =>
+    {
+        Equal(HttpMethod.Get, request.Method);
+        Equal("Bearer renewed-token", request.Headers.Authorization!.ToString());
+        Interlocked.Increment(ref requests);
+        return Json("""{"usage":{"limit":100,"used":30}}""");
+    }));
+    await using var service = new AgentUsageMonitorService(
+        () => Array.Empty<int>(),
+        httpClient,
+        (_, _) => Task.FromResult<IReadOnlySet<UsageProvider>>(new HashSet<UsageProvider> { UsageProvider.KimiCode }),
+        new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+    var expired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    service.StatusChanged += status =>
+    {
+        if (status.Providers.SingleOrDefault() is { } provider)
+        {
+            if (provider.State == "error") expired.TrySetResult();
+            if (provider.State == "ready") recovered.TrySetResult();
+        }
+    };
+
+    service.Start();
+    await expired.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Equal(0, Volatile.Read(ref requests));
+    fixture.WriteCredential("renewed-token");
+    await recovered.Task.WaitAsync(TimeSpan.FromSeconds(6));
+    await Task.Delay(TimeSpan.FromSeconds(3));
+    Equal(1, Volatile.Read(ref requests));
 }
 
 static async Task TestKimiApiAsync()
@@ -229,7 +272,7 @@ static async Task TestKimiAutoFallbackAsync()
     }
 }
 
-static async Task TestKimiInMemoryRenewalAsync()
+static async Task TestKimiExpiredCredentialAsync()
 {
     var temporaryRoot = Path.Combine(
         Path.GetTempPath(),
@@ -252,30 +295,10 @@ static async Task TestKimiInMemoryRenewalAsync()
 
     try
     {
-        var refreshCount = 0;
-        var usageCount = 0;
-        var handler = new StubHandler(request =>
+        var requestCount = 0;
+        var handler = new StubHandler(_ =>
         {
-            if (request.Method == HttpMethod.Post)
-            {
-                refreshCount++;
-                Equal("https://auth.kimi.com/api/oauth/token", request.RequestUri!.AbsoluteUri);
-                var form = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-                Contains("grant_type=refresh_token", form);
-                Contains("refresh_token=original-refresh", form);
-                return Json("""
-                    {
-                      "access_token": "renewed-access",
-                      "refresh_token": "renewed-refresh",
-                      "expires_in": 3600,
-                      "scope": "openid",
-                      "token_type": "Bearer"
-                    }
-                    """);
-            }
-
-            usageCount++;
-            Equal("Bearer renewed-access", request.Headers.Authorization!.ToString());
+            requestCount++;
             return Json("""{"usage":{"limit":100,"used":10},"limits":[]}""");
         });
         var client = new KimiCodeUsageClient(
@@ -288,17 +311,151 @@ static async Task TestKimiInMemoryRenewalAsync()
                 AutoRenewToken = true,
             });
 
-        await client.GetUsageAsync();
-        await client.GetUsageAsync();
+        try
+        {
+            await client.GetUsageAsync();
+            throw new InvalidOperationException("Expired CLI credentials must require CLI login.");
+        }
+        catch (UsageException exception)
+        {
+            Equal(UsageErrorCode.InvalidCredential, exception.Code);
+            Contains("kimi login", exception.Message);
+        }
 
-        Equal(1, refreshCount);
-        Equal(2, usageCount);
+        Equal(0, requestCount);
         Equal(originalCredential, await File.ReadAllTextAsync(credentialPath));
     }
     finally
     {
         Directory.Delete(temporaryRoot, recursive: true);
     }
+}
+
+static async Task TestKimiCredentialRetryAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("old-token");
+    var requestCount = 0;
+    var client = new KimiCodeUsageClient(new HttpClient(new StubHandler(request =>
+    {
+        Equal(HttpMethod.Get, request.Method);
+        requestCount++;
+        if (requestCount == 1)
+        {
+            Equal("Bearer old-token", request.Headers.Authorization!.ToString());
+            fixture.WriteCredential("new-token");
+            return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        }
+
+        Equal("Bearer new-token", request.Headers.Authorization!.ToString());
+        return Json("""{"usage":{"limit":100,"used":10}}""");
+    })), new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+
+    Equal(10d, (await client.GetUsageAsync()).Primary!.UsedPercent);
+    Equal(2, requestCount);
+}
+
+static async Task TestKimiCredentialChangesAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("initial-token");
+    var expectedToken = "initial-token";
+    var requests = 0;
+    var client = new KimiCodeUsageClient(new HttpClient(new StubHandler(request =>
+    {
+        requests++;
+        Equal(HttpMethod.Get, request.Method);
+        Equal($"Bearer {expectedToken}", request.Headers.Authorization!.ToString());
+        return Json("""{"usage":{"limit":100,"used":20}}""");
+    })), new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+
+    Equal(20d, (await client.GetUsageAsync()).Primary!.UsedPercent);
+    fixture.WriteCredential("updated-token");
+    expectedToken = "updated-token";
+    Equal(20d, (await client.GetUsageAsync()).Primary!.UsedPercent);
+    fixture.WriteCredential("expired-token", expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+    await ExpectUsageErrorAsync(() => client.GetUsageAsync(), UsageErrorCode.InvalidCredential);
+    File.Delete(Path.Combine(fixture.Home, "credentials", "kimi-code.json"));
+    await ExpectUsageErrorAsync(() => client.GetUsageAsync(), UsageErrorCode.MissingCredential);
+    Equal(2, requests);
+}
+
+static async Task TestKimiRetryBoundAsync()
+{
+    foreach (var changed in new[] { false, true })
+    {
+        using var fixture = new KimiCliFixture();
+        fixture.WriteCredential("rejected-token");
+        var requests = 0;
+        var client = new KimiCodeUsageClient(new HttpClient(new StubHandler(request =>
+        {
+            requests++;
+            Equal(HttpMethod.Get, request.Method);
+            if (changed)
+            {
+                fixture.WriteCredential($"changed-token-{requests}");
+            }
+            return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        })), new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+
+        await ExpectUsageErrorAsync(() => client.GetUsageAsync(), UsageErrorCode.InvalidCredential);
+        Equal(changed ? 2 : 1, requests);
+    }
+}
+
+static async Task TestKimiInvalidConfigAsync()
+{
+    foreach (var config in new[]
+    {
+        "invalid = [",
+        """
+        [providers."managed:kimi-code"]
+        oauth = { storage = "file", key = "oauth/../outside" }
+        """,
+        """
+        [providers."managed:kimi-code"]
+        oauth = { storage = "file", key = 'oauth/..\outside' }
+        """,
+        """
+        [providers."managed:kimi-code"]
+        oauth = { storage = "file" }
+        """,
+        """
+        [providers."managed:kimi-code"]
+        base_url = "http://example.test/coding/v1"
+        oauth = { storage = "file", key = "oauth/kimi-code" }
+        """
+    })
+    {
+        using var fixture = new KimiCliFixture();
+        fixture.WriteCredential("example-token");
+        File.WriteAllText(Path.Combine(fixture.Home, "config.toml"), config);
+        var client = new KimiCodeUsageClient(new HttpClient(new StubHandler(_ =>
+            throw new InvalidOperationException("Invalid configuration must not send credentials."))),
+            new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+        await ExpectUsageErrorAsync(() => client.GetUsageAsync(), UsageErrorCode.InvalidConfiguration);
+    }
+}
+
+static async Task TestKimiInternationalCredentialAsync()
+{
+    using var fixture = new KimiCliFixture();
+    fixture.WriteCredential("stale-mainland-token");
+    fixture.WriteCredential("global-token", "kimi-code-env-example");
+    File.WriteAllText(Path.Combine(fixture.Home, "config.toml"), """
+        [providers."managed:kimi-code"]
+        type = "kimi"
+        base_url = "https://api.kimi.ai/coding/v1"
+        oauth = { storage = "file", key = "oauth/kimi-code-env-example", oauth_host = "https://auth.kimi.ai" }
+        """);
+    var client = new KimiCodeUsageClient(new HttpClient(new StubHandler(request =>
+    {
+        Equal("Bearer global-token", request.Headers.Authorization!.ToString());
+        Equal("https://api.kimi.ai/coding/v1/usages", request.RequestUri!.AbsoluteUri);
+        return Json("""{"usage":{"limit":100,"used":15}}""");
+    })), new KimiCodeUsageOptions { Mode = KimiCodeUsageMode.CliCredential, KimiCodeHome = fixture.Home });
+
+    Equal(15d, (await client.GetUsageAsync()).Primary!.UsedPercent);
 }
 
 static async Task TestKimiCompleteUsageAsync()
@@ -438,6 +595,21 @@ static HttpResponseMessage Json(string content) => new(HttpStatusCode.OK)
     Content = new StringContent(content, Encoding.UTF8, "application/json"),
 };
 
+static async Task ExpectUsageErrorAsync(Func<Task<UsageSnapshot>> action, UsageErrorCode expected)
+{
+    try
+    {
+        await action();
+    }
+    catch (UsageException exception)
+    {
+        Equal(expected, exception.Code);
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected usage error {expected}.");
+}
+
 static void Equal<T>(T expected, T actual)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
@@ -459,4 +631,22 @@ sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) 
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken) => Task.FromResult(handler(request));
+}
+
+sealed class KimiCliFixture : IDisposable
+{
+    public string Home { get; } = Path.Combine(Path.GetTempPath(), "kevinzonda-agent-usage-monitor-tests", Guid.NewGuid().ToString("N"));
+
+    public KimiCliFixture() => Directory.CreateDirectory(Path.Combine(Home, "credentials"));
+
+    public void WriteCredential(string token, string name = "kimi-code", DateTimeOffset? expiresAt = null) =>
+        File.WriteAllText(Path.Combine(Home, "credentials", $"{name}.json"), JsonSerializer.Serialize(new
+        {
+            access_token = token,
+            refresh_token = "example-refresh-token",
+            expires_at = (expiresAt ?? DateTimeOffset.UtcNow.AddHours(1)).ToUnixTimeSeconds(),
+            expires_in = 3600
+        }));
+
+    public void Dispose() => Directory.Delete(Home, recursive: true);
 }

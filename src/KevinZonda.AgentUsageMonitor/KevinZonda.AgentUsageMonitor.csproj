@@ -8,4 +8,7 @@
     <RootNamespace>KevinZonda.AgentUsageMonitor</RootNamespace>
     <AssemblyName>KevinZonda.AgentUsageMonitor</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+  </ItemGroup>
 </Project>

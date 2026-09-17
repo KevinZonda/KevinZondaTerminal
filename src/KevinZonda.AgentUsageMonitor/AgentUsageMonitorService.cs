@@ -11,8 +11,8 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
     private static readonly TimeSpan ManualRefreshCooldown = TimeSpan.FromSeconds(15);
 
     private readonly Func<IReadOnlyCollection<int>> _getRootProcessIds;
-    private readonly AgentProcessDetector _detector = new();
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly Func<IReadOnlyCollection<int>, CancellationToken, Task<IReadOnlySet<UsageProvider>>> _detectProviders;
+    private readonly HttpClient _httpClient;
     private readonly Dictionary<UsageProvider, ProviderRuntime> _providers = new()
     {
         [UsageProvider.Codex] = new(),
@@ -21,17 +21,35 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
     private readonly HashSet<Task> _refreshTasks = [];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _stateLock = new();
-    private volatile IReadOnlyDictionary<UsageProvider, IUsageClient> _clients;
+    private readonly IReadOnlyDictionary<UsageProvider, IUsageClient> _clients;
     private Task? _monitorTask;
     private int _disposed;
 
     public AgentUsageMonitorService(
         Func<IReadOnlyCollection<int>> getRootProcessIds,
         AgentUsageMonitorOptions? options = null)
+        : this(getRootProcessIds,
+            new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
+            new AgentProcessDetector().DetectAsync,
+            new KimiCodeUsageOptions())
+    {
+    }
+
+    internal AgentUsageMonitorService(
+        Func<IReadOnlyCollection<int>> getRootProcessIds,
+        HttpClient httpClient,
+        Func<IReadOnlyCollection<int>, CancellationToken, Task<IReadOnlySet<UsageProvider>>> detectProviders,
+        KimiCodeUsageOptions kimiOptions)
     {
         ArgumentNullException.ThrowIfNull(getRootProcessIds);
         _getRootProcessIds = getRootProcessIds;
-        _clients = CreateClients(options ?? new AgentUsageMonitorOptions());
+        _httpClient = httpClient;
+        _detectProviders = detectProviders;
+        _clients = new Dictionary<UsageProvider, IUsageClient>
+        {
+            [UsageProvider.Codex] = new CodexUsageClient(_httpClient),
+            [UsageProvider.KimiCode] = new KimiCodeUsageClient(_httpClient, kimiOptions)
+        };
     }
 
     public event Action<AgentUsageStatus>? StatusChanged;
@@ -57,19 +75,6 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
     {
         ArgumentNullException.ThrowIfNull(options);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-        var current = _clients[UsageProvider.KimiCode] as KimiCodeUsageClient;
-        if (current?.AutoRenewToken == options.AutoRenewKimiToken)
-        {
-            return;
-        }
-
-        _clients = CreateClients(options);
-        lock (_stateLock)
-        {
-            _providers[UsageProvider.KimiCode].LastAttempt = null;
-        }
-        _ = DetectAndRefreshAsync();
     }
 
     public bool RequestRefresh(UsageProvider provider)
@@ -115,24 +120,33 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
         }
     }
 
-    private IReadOnlyDictionary<UsageProvider, IUsageClient> CreateClients(
-        AgentUsageMonitorOptions options) =>
-        new Dictionary<UsageProvider, IUsageClient>
-        {
-            [UsageProvider.Codex] = new CodexUsageClient(_httpClient),
-            [UsageProvider.KimiCode] = new KimiCodeUsageClient(
-                _httpClient,
-                new KimiCodeUsageOptions
-                {
-                    AutoRenewToken = options.AutoRenewKimiToken
-                })
-        };
-
     private async Task DetectAndRefreshAsync()
     {
-        var activeProviders = await _detector.DetectAsync(
+        var activeProviders = await _detectProviders(
             _getRootProcessIds(),
             _lifetime.Token).ConfigureAwait(false);
+        var checkKimiCredentials = false;
+        lock (_stateLock)
+        {
+            var kimi = _providers[UsageProvider.KimiCode];
+            checkKimiCredentials = activeProviders.Contains(UsageProvider.KimiCode)
+                && !kimi.RefreshInProgress && kimi.Snapshot?.Source != UsageSource.KimiCodeApiKey;
+        }
+
+        string? kimiCredentialVersion = null;
+        if (checkKimiCredentials)
+        {
+            try
+            {
+                kimiCredentialVersion = await ((KimiCodeUsageClient)_clients[UsageProvider.KimiCode])
+                    .GetCliCredentialVersionAsync(_lifetime.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                kimiCredentialVersion = "unavailable";
+            }
+        }
+
         var now = DateTimeOffset.UtcNow;
         var changed = false;
         var refreshes = new List<(UsageProvider Provider, IUsageClient Client)>();
@@ -148,13 +162,19 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
                     changed = true;
                 }
 
+                var credentialsChanged = provider == UsageProvider.KimiCode
+                    && kimiCredentialVersion is not null && runtime.CredentialVersion != kimiCredentialVersion;
                 if (!active || runtime.RefreshInProgress ||
-                    runtime.LastAttempt is { } lastAttempt && now - lastAttempt < RefreshInterval)
+                    !credentialsChanged && runtime.LastAttempt is { } lastAttempt && now - lastAttempt < RefreshInterval)
                 {
                     continue;
                 }
 
                 runtime.LastAttempt = now;
+                if (provider == UsageProvider.KimiCode)
+                {
+                    runtime.CredentialVersion = kimiCredentialVersion;
+                }
                 runtime.RefreshInProgress = true;
                 runtime.Error = null;
                 refreshes.Add((provider, _clients[provider]));
@@ -366,5 +386,6 @@ public sealed class AgentUsageMonitorService : IAgentUsageMonitorService
         internal DateTimeOffset? LastAttempt { get; set; }
         internal UsageSnapshot? Snapshot { get; set; }
         internal string? Error { get; set; }
+        internal string? CredentialVersion { get; set; }
     }
 }
