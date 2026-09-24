@@ -81,6 +81,7 @@ export class TerminalController {
   private lastRenderedOutputSeq = 0;
   private lastCheckpointOutputSeq = 0;
   private suppressSessionResize = false;
+  private mouseSelectionPending = false;
   private disposed = false;
 
   public constructor(
@@ -150,6 +151,11 @@ export class TerminalController {
     this.element.addEventListener('pointerdown', () => this.focus());
     this.element.addEventListener('focusin', () => this.callbacks.onFocus(this.sessionId));
     this.host.addEventListener('contextmenu', this.handleContextMenu, { capture: true });
+    this.host.addEventListener('mousedown', this.handleMouseDown, { capture: true });
+    document.addEventListener('mousedown', this.handleDocumentMouseDown, { capture: true });
+    document.addEventListener('mousemove', this.handleDocumentMouseMove, { capture: true });
+    document.addEventListener('mouseup', this.handleDocumentMouseUp, { capture: true });
+    window.addEventListener('blur', this.handleWindowBlur);
     this.host.addEventListener('wheel', this.handleWheel, { capture: true, passive: false });
     this.host.addEventListener('touchstart', this.handleTouchStart, { capture: true, passive: false });
     this.host.addEventListener('touchmove', this.handleTouchMove, { capture: true, passive: false });
@@ -443,6 +449,11 @@ export class TerminalController {
       window.clearTimeout(this.checkpointTimer);
     }
     this.cancelWebglReclaim();
+    this.host.removeEventListener('mousedown', this.handleMouseDown, { capture: true });
+    document.removeEventListener('mousedown', this.handleDocumentMouseDown, { capture: true });
+    document.removeEventListener('mousemove', this.handleDocumentMouseMove, { capture: true });
+    document.removeEventListener('mouseup', this.handleDocumentMouseUp, { capture: true });
+    window.removeEventListener('blur', this.handleWindowBlur);
     this.host.removeEventListener('wheel', this.handleWheel, { capture: true });
     this.host.removeEventListener('touchstart', this.handleTouchStart, { capture: true });
     this.host.removeEventListener('touchmove', this.handleTouchMove, { capture: true });
@@ -569,6 +580,50 @@ export class TerminalController {
       .then(text => this.paste(text))
       .catch(error => console.error('Unable to paste clipboard text.', error));
   };
+
+  private readonly handleMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0 || this.terminal.modes.mouseTrackingMode !== 'none') {
+      return;
+    }
+
+    this.mouseSelectionPending = true;
+    // xterm handles click counts 1–3 only. On a fourth click it still starts
+    // listening for drag, but keeps the previous selection anchor.
+    if (event.detail > 3) {
+      this.terminal.clearSelection();
+    }
+  };
+
+  private readonly handleDocumentMouseDown = (event: MouseEvent): void => {
+    if (this.mouseSelectionPending && event.button === 0) {
+      this.cancelMouseSelection();
+    }
+  };
+
+  private readonly handleDocumentMouseMove = (event: MouseEvent): void => {
+    if (this.mouseSelectionPending && (event.buttons & 1) === 0) {
+      // A mouseup outside the WebView can be lost. Stop xterm's document-level
+      // drag listener before an ordinary pointer move extends the old selection.
+      this.cancelMouseSelection();
+    }
+  };
+
+  private readonly handleDocumentMouseUp = (event: MouseEvent): void => {
+    if (event.button === 0) {
+      this.mouseSelectionPending = false;
+    }
+  };
+
+  private readonly handleWindowBlur = (): void => {
+    if (this.mouseSelectionPending) {
+      this.cancelMouseSelection();
+    }
+  };
+
+  private cancelMouseSelection(): void {
+    this.mouseSelectionPending = false;
+    this.terminal.clearSelection();
+  }
 
   private readonly handleWheel = (event: WheelEvent): void => {
     if (event.deltaY === 0) {
