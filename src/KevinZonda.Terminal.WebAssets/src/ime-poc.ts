@@ -1,6 +1,6 @@
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { installImeInputFallback } from './ime-input-fallback';
+import { installImeInputReconciler } from './ime-input-reconciler';
 
 const terminal = new Terminal({ cols: 80, rows: 10, convertEol: true });
 terminal.open(document.getElementById('terminal')!);
@@ -36,7 +36,7 @@ terminal.onData(data => {
 });
 
 if (new URLSearchParams(location.search).has('fix')) {
-  installImeInputFallback(terminal, data => {
+  installImeInputReconciler(terminal, data => {
     record({ source: 'fallback', data });
     terminal.write(data);
   });

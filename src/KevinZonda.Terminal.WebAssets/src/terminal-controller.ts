@@ -7,7 +7,7 @@ import { Terminal } from '@xterm/xterm';
 import type { IDisposable } from '@xterm/xterm';
 import type { CursorSettings, FontSettings, NativeBridge, SessionCreated, ThemeSettings } from './bridge';
 import type { TerminalCheckpoint } from './resume-store';
-import { installImeInputFallback } from './ime-input-fallback';
+import { installImeInputReconciler } from './ime-input-reconciler';
 import { resolveTerminalTheme } from './themes';
 
 export interface TerminalCallbacks {
@@ -178,7 +178,7 @@ export class TerminalController {
     if (!this.opened) {
       this.terminal.open(this.host);
       this.opened = true;
-      this.disposables.push(installImeInputFallback(this.terminal, data => this.handleTerminalData(data)));
+      this.disposables.push(installImeInputReconciler(this.terminal, data => this.handleTerminalData(data)));
       void this.syncLigaturesAddon();
       if (!this.fitNow()) {
         this.scheduleFit();

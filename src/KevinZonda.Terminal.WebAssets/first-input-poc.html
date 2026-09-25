@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KTerm first input PoC</title>
+    <style>
+      body { margin: 24px; font: 14px system-ui, sans-serif; background: #161b22; color: #e6edf3; }
+      p { max-width: 850px; line-height: 1.5; }
+      button { margin-bottom: 12px; padding: 7px 12px; }
+      #terminal { width: min(850px, 100%); height: 220px; margin-bottom: 16px; }
+      #log { height: 380px; overflow: auto; padding: 12px; background: #0d1117; white-space: pre-wrap; font: 12px ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <h1>首次输入 `！` PoC</h1>
+    <p>先在空终端按几次 Delete（Mac 键盘上的退格），再输入两次 <code>！</code>；
+      也试试先输入几个字符、Delete 删光后输入 <code>！</code>。普通输入框可作对照。
+      若普通输入框也吞首键，问题发生在终端处理之前。日志记录焦点、浏览器输入事件与终端实际转发。
+      网址末尾加 <code>?fix=1</code> 可启用当前输入协调逻辑。</p>
+    <button id="reset">新建空终端</button>
+    <button id="replay">重放 Delete / ！ 交错事件</button>
+    <button id="plain-reset">清空并聚焦普通输入框</button>
+    <button id="copy">复制事件日志</button>
+    <div id="terminal"></div>
+    <textarea id="plain" rows="3" cols="70" aria-label="普通输入框"></textarea>
+    <p id="summary"></p>
+    <ol id="recent"></ol>
+    <pre id="log"></pre>
+    <script type="module" src="/src/first-input-poc.ts"></script>
+  </body>
+</html>

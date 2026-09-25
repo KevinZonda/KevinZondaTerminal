@@ -192,7 +192,14 @@ public sealed partial class MainWindow : Window
                 this,
                 _workingDirectory);
             _agentUsage.Start();
+#if DEBUG
+            var imePocUrl = Environment.GetEnvironmentVariable("KTERM_IME_POC_URL");
+            _webView.Source = Uri.TryCreate(imePocUrl, UriKind.Absolute, out var pocUri)
+                ? pocUri
+                : _assetServer.StartPage;
+#else
             _webView.Source = _assetServer.StartPage;
+#endif
         }
         catch (Exception exception)
         {
