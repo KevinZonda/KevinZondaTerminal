@@ -507,7 +507,10 @@ internal sealed class SettingsForm : Form
     {
         var page = new TabPage("Kimi Usage")
         {
-            BackColor = SurfaceColor, ForeColor = ForeColor, Padding = new Padding(16), AutoScroll = true
+            BackColor = SurfaceColor,
+            ForeColor = ForeColor,
+            Padding = new Padding(16),
+            AutoScroll = true
         };
         var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, BackColor = SurfaceColor };
         ConfigureField(_kimiMode);

@@ -75,7 +75,10 @@ public sealed class KimiOAuthManager
                     throw new UsageException(UsageErrorCode.InvalidCredential, "Kimi login was superseded or signed out. Start login again.");
                 await _store.SaveAsync(current with
                 {
-                    Revision = Guid.NewGuid().ToString("D"), Generation = Guid.NewGuid().ToString("D"), Region = RegionKey(region), Token = token
+                    Revision = Guid.NewGuid().ToString("D"),
+                    Generation = Guid.NewGuid().ToString("D"),
+                    Region = RegionKey(region),
+                    Token = token
                 }, signal).ConfigureAwait(false);
                 return;
             }
@@ -99,7 +102,10 @@ public sealed class KimiOAuthManager
         catch (UsageException) { state = new KimiStoredAuthorization(); }
         await _store.SaveAsync(state with
         {
-            Token = null, ProtectedToken = null, Revision = Guid.NewGuid().ToString("D"), Generation = Guid.NewGuid().ToString("D")
+            Token = null,
+            ProtectedToken = null,
+            Revision = Guid.NewGuid().ToString("D"),
+            Generation = Guid.NewGuid().ToString("D")
         }, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -126,7 +132,9 @@ public sealed class KimiOAuthManager
                 {
                     var response = await PostFormAsync(region, "/api/oauth/token", state.DeviceId, new()
                     {
-                        ["client_id"] = ClientId, ["grant_type"] = "refresh_token", ["refresh_token"] = token.RefreshToken
+                        ["client_id"] = ClientId,
+                        ["grant_type"] = "refresh_token",
+                        ["refresh_token"] = token.RefreshToken
                     }, cancellationToken).ConfigureAwait(false);
                     using var document = response.Document;
                     if (response.Status.IsSuccess())

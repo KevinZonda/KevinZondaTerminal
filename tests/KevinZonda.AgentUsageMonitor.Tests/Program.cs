@@ -307,12 +307,16 @@ static async Task TestKimiGlobalAuthorizationAsync()
     Equal(KimiOAuthRegion.Global, (await oauth.GetStatusAsync()).Region!.Value);
     var active = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
     {
-        AuthenticationMode = KimiUsageAuthenticationMode.Active, ActiveRegion = KimiOAuthRegion.Global, ActiveTokenPath = tokenPath
+        AuthenticationMode = KimiUsageAuthenticationMode.Active,
+        ActiveRegion = KimiOAuthRegion.Global,
+        ActiveTokenPath = tokenPath
     });
     Equal(20d, (await active.GetUsageAsync()).Primary!.UsedPercent);
     var wrongRegion = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
     {
-        AuthenticationMode = KimiUsageAuthenticationMode.Active, ActiveTokenPath = tokenPath, KimiCodeHome = fixture.Home
+        AuthenticationMode = KimiUsageAuthenticationMode.Active,
+        ActiveTokenPath = tokenPath,
+        KimiCodeHome = fixture.Home
     });
     await ExpectUsageErrorAsync(() => wrongRegion.GetUsageAsync(), UsageErrorCode.MissingCredential);
 }
@@ -348,7 +352,9 @@ static async Task TestKimiActiveUnauthorizedAsync()
         await oauth.LoginAsync(KimiOAuthRegion.MainlandChina, _ => Task.CompletedTask);
         var active = new KimiCodeUsageClient(http, new KimiCodeUsageOptions
         {
-            AuthenticationMode = KimiUsageAuthenticationMode.Active, ActiveTokenPath = tokenPath, KimiCodeHome = fixture.Home
+            AuthenticationMode = KimiUsageAuthenticationMode.Active,
+            ActiveTokenPath = tokenPath,
+            KimiCodeHome = fixture.Home
         });
         if (revoked)
         {
@@ -394,7 +400,8 @@ static async Task TestKimiModeSwitchAsync()
     await passiveStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
     service.UpdateOptions(new AgentUsageMonitorOptions
     {
-        KimiAuthenticationMode = KimiUsageAuthenticationMode.Active, KimiActiveTokenPath = tokenPath
+        KimiAuthenticationMode = KimiUsageAuthenticationMode.Active,
+        KimiActiveTokenPath = tokenPath
     });
     Equal(true, service.RequestRefresh(UsageProvider.KimiCode));
     await activeReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -406,9 +413,11 @@ static async Task TestKimiModeSwitchAsync()
 
 static HttpResponseMessage DeviceAuthorizationResponse(bool global = false) => Json(JsonSerializer.Serialize(new
 {
-    device_code = "example-device-code", user_code = "EXAMPLE",
+    device_code = "example-device-code",
+    user_code = "EXAMPLE",
     verification_uri_complete = global ? "https://auth.kimi.ai/activate" : "https://auth.kimi.com/activate",
-    interval = 1, expires_in = 60
+    interval = 1,
+    expires_in = 60
 }));
 
 static async Task ExpectOAuthErrorAsync(Func<Task> action, UsageErrorCode expected)
