@@ -61,6 +61,16 @@ dotnet run --project src/KevinZonda.Terminal.AvaloniaDesktop -- ~/work
 dotnet run --project src/KevinZonda.Terminal.AvaloniaDesktop -- --working-directory ~/work
 ```
 
+打包后的 macOS 应用也订阅系统 File Activation，可通过 Launch Services 指定目录：
+
+```bash
+open -a "KevinZonda Terminal" ~/work
+```
+
+传入目录时以该目录启动 Shell；传入文件时以文件的父目录启动。应用已运行时会为新的
+File Activation 打开独立窗口。应用声明为 `public.folder` 的备用 Viewer，因此也可以从
+Finder 将目录拖到应用或 Dock 图标上打开，但不会成为默认目录处理器。
+
 可以显式运行一次本机 Codex 进程检测与用量读取集成测试：
 
 ```bash

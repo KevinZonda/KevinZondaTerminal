@@ -1,12 +1,17 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 
 namespace KevinZonda.Terminal.AvaloniaDesktop;
 
 public sealed class App : Application
 {
     private AboutWindow? _aboutWindow;
+    private IActivatableLifetime? _activatableLifetime;
+    private MainWindow? _initialWindow;
+    private IClassicDesktopStyleApplicationLifetime? _desktopLifetime;
+    private string? _initialWorkingDirectory;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -14,10 +19,65 @@ public sealed class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow(ResolveWorkingDirectory(desktop.Args));
+            _desktopLifetime = desktop;
+            _initialWorkingDirectory = ResolveWorkingDirectory(desktop.Args);
+            _activatableLifetime = this.TryGetFeature<IActivatableLifetime>();
+            if (_activatableLifetime is not null)
+            {
+                _activatableLifetime.Activated += HandleActivated;
+            }
+
+            Dispatcher.UIThread.Post(ShowInitialWindow, DispatcherPriority.Background);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void HandleActivated(object? sender, ActivatedEventArgs eventArgs)
+    {
+        if (eventArgs is not FileActivatedEventArgs fileActivation ||
+            _desktopLifetime is null)
+        {
+            return;
+        }
+
+        var workingDirectories = ResolveActivationWorkingDirectories(
+            fileActivation.Files.Select(item => item.Path));
+        if (workingDirectories.Count == 0)
+        {
+            return;
+        }
+
+        var index = 0;
+        if (_initialWindow is null)
+        {
+            ShowInitialWindow(workingDirectories[0]);
+            index = 1;
+        }
+
+        for (; index < workingDirectories.Count; index++)
+        {
+            var window = new MainWindow(workingDirectories[index]);
+            window.Show();
+            window.Activate();
+        }
+    }
+
+    private void ShowInitialWindow() =>
+        ShowInitialWindow(_initialWorkingDirectory ??
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    private void ShowInitialWindow(string workingDirectory)
+    {
+        if (_initialWindow is not null || _desktopLifetime is null)
+        {
+            return;
+        }
+
+        _initialWindow = new MainWindow(workingDirectory);
+        _desktopLifetime.MainWindow = _initialWindow;
+        _initialWindow.Show();
+        _initialWindow.Activate();
     }
 
     private async void HandleAboutClick(object? sender, EventArgs eventArgs)
@@ -99,5 +159,37 @@ public sealed class App : Application
                !string.Equals(currentDirectory, Path.GetPathRoot(currentDirectory), StringComparison.Ordinal)
             ? currentDirectory
             : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    }
+
+    internal static IReadOnlyList<string> ResolveActivationWorkingDirectories(
+        IEnumerable<Uri> itemUris)
+    {
+        var results = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var uri in itemUris)
+        {
+            if (!uri.IsFile)
+            {
+                continue;
+            }
+
+            var path = uri.LocalPath;
+            string? workingDirectory = null;
+            if (Directory.Exists(path))
+            {
+                workingDirectory = Path.GetFullPath(path);
+            }
+            else if (File.Exists(path))
+            {
+                workingDirectory = Path.GetDirectoryName(Path.GetFullPath(path));
+            }
+
+            if (workingDirectory is not null && seen.Add(workingDirectory))
+            {
+                results.Add(workingDirectory);
+            }
+        }
+
+        return results;
     }
 }

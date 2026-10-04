@@ -40,6 +40,7 @@ Require(MainWindow.ResolveMacOSWindowShortcut(Key.H, KeyModifiers.Alt) ==
 await TestSettingsStoreAsync();
 TestSourceGeneratedBridgeJson();
 TestTerminalThemeCatalog();
+TestFileActivationWorkingDirectories();
 
 Console.WriteLine("PASS shared settings persistence and Web bridge protocol");
 if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
@@ -93,6 +94,36 @@ static void TestTerminalThemeCatalog()
             $"Theme '{theme.Name}' does not define a complete ANSI palette.");
         Require(!string.IsNullOrWhiteSpace(theme.SelectionBackground),
             $"Theme '{theme.Name}' does not define a selection color.");
+    }
+}
+
+static void TestFileActivationWorkingDirectories()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"kterm-file-activation-{Guid.NewGuid():N}");
+    var project = Path.Combine(root, "project with spaces");
+    var nested = Path.Combine(root, "nested");
+    var file = Path.Combine(project, "README.md");
+    Directory.CreateDirectory(project);
+    Directory.CreateDirectory(nested);
+    File.WriteAllText(file, "test");
+
+    try
+    {
+        var resolved = App.ResolveActivationWorkingDirectories(
+        [
+            new Uri(project),
+            new Uri(file),
+            new Uri(nested),
+            new Uri("https://example.com/not-a-file"),
+            new Uri(Path.Combine(root, "missing"))
+        ]);
+
+        Require(resolved.SequenceEqual([project, nested]),
+            "macOS file activation did not resolve directories and file parents correctly.");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
     }
 }
 
