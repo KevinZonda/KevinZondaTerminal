@@ -30,8 +30,7 @@ var scenarios = new[]
     new Scenario(128 * 1024, Chunked: false),
     new Scenario(1024 * 1024, Chunked: false),
     new Scenario(4 * 1024, Chunked: true),
-    new Scenario(128 * 1024, Chunked: true),
-    new Scenario(17 * 1024 * 1024, Chunked: false)
+    new Scenario(128 * 1024, Chunked: true)
 };
 
 foreach (var scenario in scenarios)
@@ -108,7 +107,7 @@ static async Task<Result> RunNanoScenarioAsync(Scenario scenario)
     string outcome;
     try
     {
-        using var writeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var writeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         if (scenario.Chunked)
         {
             for (var offset = 0; offset < paste.Length; offset += 512)

@@ -125,6 +125,35 @@ static int read_exact(int fd, void *data, size_t length)
     return 1;
 }
 
+static int drain_master_output(int master_fd)
+{
+    // A full-screen application can emit more output while consuming input than
+    // the PTY can buffer. Drain that output while an input frame is in progress
+    // so neither side waits forever for the other buffer to make room.
+    unsigned char output_buffer[16384];
+    for (;;)
+    {
+        ssize_t count = read(master_fd, output_buffer, sizeof(output_buffer));
+        if (count > 0)
+        {
+            if (send_frame(FRAME_OUTPUT, output_buffer, (uint32_t)count) < 0)
+            {
+                return -1;
+            }
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+        {
+            continue;
+        }
+        if (count == 0 || (errno == EAGAIN || errno == EWOULDBLOCK))
+        {
+            return 0;
+        }
+        return -1;
+    }
+}
+
 static int write_master(int master_fd, const unsigned char *data, size_t length)
 {
     while (length > 0)
@@ -134,6 +163,10 @@ static int write_master(int master_fd, const unsigned char *data, size_t length)
         {
             data += count;
             length -= (size_t)count;
+            if (drain_master_output(master_fd) < 0)
+            {
+                return -1;
+            }
             continue;
         }
         if (count < 0 && errno == EINTR)
@@ -142,11 +175,24 @@ static int write_master(int master_fd, const unsigned char *data, size_t length)
         }
         if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
         {
-            struct pollfd descriptor = { master_fd, POLLOUT, 0 };
-            if (poll(&descriptor, 1, 1000) >= 0)
+            struct pollfd descriptor = { master_fd, POLLIN | POLLOUT, 0 };
+            int poll_result;
+            do
             {
-                continue;
+                poll_result = poll(&descriptor, 1, 1000);
             }
+            while (poll_result < 0 && errno == EINTR);
+
+            if (poll_result < 0 || (descriptor.revents & (POLLERR | POLLNVAL)) != 0)
+            {
+                return -1;
+            }
+            if ((descriptor.revents & (POLLIN | POLLHUP)) != 0 &&
+                drain_master_output(master_fd) < 0)
+            {
+                return -1;
+            }
+            continue;
         }
         return -1;
     }

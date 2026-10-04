@@ -7,7 +7,7 @@ if (!UnixPtyProcess.IsSupported)
     return;
 }
 
-using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
 await using var process = await UnixPtyProcess.StartAsync(
     new PtyStartInfo
     {
@@ -48,6 +48,36 @@ Equal(7, status.ExitCode);
 Equal<int?>(null, status.Signal);
 
 Console.WriteLine("PASS Unix PTY spawn, TTY, input, output, resize, and exit status");
+
+await using (var duplexProcess = await UnixPtyProcess.StartAsync(
+    new PtyStartInfo
+    {
+        FileName = "/bin/sh",
+        Arguments = ["-c", "stty raw -echo; printf 'DUPLEX_READY'; exec cat"],
+        WorkingDirectory = Environment.CurrentDirectory,
+        Environment = new Dictionary<string, string?>
+        {
+            ["TERM"] = "xterm-256color"
+        },
+        Columns = 80,
+        Rows = 24
+    },
+    timeout.Token))
+{
+    await ReadUntilAsync(duplexProcess, "DUPLEX_READY", timeout.Token);
+    var largeInput = GC.AllocateUninitializedArray<byte>(17 * 1024 * 1024);
+    Array.Fill(largeInput, (byte)'p');
+    var echoedInputTask = ReadExactlyAsync(duplexProcess, largeInput.Length, timeout.Token);
+
+    await duplexProcess.WriteAsync(largeInput, timeout.Token);
+    var echoedInput = await echoedInputTask;
+    if (!largeInput.AsSpan().SequenceEqual(echoedInput))
+    {
+        throw new InvalidOperationException("The PTY corrupted a large duplex input stream.");
+    }
+}
+
+Console.WriteLine("PASS Unix PTY large duplex input drains output and crosses frame limit");
 
 var stubbornProcess = await UnixPtyProcess.StartAsync(
     new PtyStartInfo
@@ -107,6 +137,26 @@ static async Task<string> ReadAllOutputAsync(
         output.Write(buffer, 0, count);
     }
     return Encoding.UTF8.GetString(output.ToArray());
+}
+
+static async Task<byte[]> ReadExactlyAsync(
+    UnixPtyProcess process,
+    int length,
+    CancellationToken cancellationToken)
+{
+    var output = GC.AllocateUninitializedArray<byte>(length);
+    var offset = 0;
+    while (offset < output.Length)
+    {
+        var count = await process.ReadAsync(output.AsMemory(offset), cancellationToken);
+        if (count == 0)
+        {
+            throw new EndOfStreamException(
+                $"PTY output ended after {offset} of {output.Length} expected bytes.");
+        }
+        offset += count;
+    }
+    return output;
 }
 
 static void Contains(string actual, string expected)

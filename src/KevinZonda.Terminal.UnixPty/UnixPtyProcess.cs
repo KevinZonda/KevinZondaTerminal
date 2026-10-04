@@ -19,6 +19,7 @@ public sealed class UnixPtyProcess : IAsyncDisposable
 {
     private const int HeaderLength = 5;
     private const int MaximumFrameBytes = 16 * 1024 * 1024;
+    private const int InputFrameChunkBytes = 64 * 1024;
     private const byte InputFrame = 1;
     private const byte ResizeFrame = 2;
     private const byte CloseFrame = 3;
@@ -199,7 +200,29 @@ public sealed class UnixPtyProcess : IAsyncDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         return data.IsEmpty
             ? ValueTask.CompletedTask
-            : WriteFrameAsync(InputFrame, data, cancellationToken);
+            : WriteInputFramesAsync(data, cancellationToken);
+    }
+
+    private async ValueTask WriteInputFramesAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken)
+    {
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            while (!data.IsEmpty)
+            {
+                var count = Math.Min(data.Length, InputFrameChunkBytes);
+                await WriteFrameCoreAsync(InputFrame, data[..count], cancellationToken)
+                    .ConfigureAwait(false);
+                data = data[count..];
+            }
+            await _helperInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     /// <summary>Changes the pseudoterminal's character-cell dimensions.</summary>
@@ -221,6 +244,23 @@ public sealed class UnixPtyProcess : IAsyncDisposable
         ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await WriteFrameCoreAsync(type, payload, cancellationToken).ConfigureAwait(false);
+            await _helperInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private async ValueTask WriteFrameCoreAsync(
+        byte type,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken)
+    {
         if (payload.Length > MaximumFrameBytes)
         {
             throw new ArgumentOutOfRangeException(
@@ -232,17 +272,7 @@ public sealed class UnixPtyProcess : IAsyncDisposable
         frame[0] = type;
         BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(1, 4), payload.Length);
         payload.Span.CopyTo(frame.AsSpan(HeaderLength));
-
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await _helperInput.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
-            await _helperInput.FlushAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        await _helperInput.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task PumpOutputAsync()
