@@ -598,15 +598,16 @@ export class TerminalController {
 
   private readonly handleDocumentMouseDown = (event: MouseEvent): void => {
     if (this.mouseSelectionPending && event.button === 0) {
-      this.cancelMouseSelection();
+      this.finishMouseSelection(event);
     }
   };
 
   private readonly handleDocumentMouseMove = (event: MouseEvent): void => {
     if (this.mouseSelectionPending && (event.buttons & 1) === 0) {
-      // A mouseup outside the WebView can be lost. Stop xterm's document-level
-      // drag listener before an ordinary pointer move extends the old selection.
-      this.cancelMouseSelection();
+      // A mouseup outside the WebView can be lost. Complete xterm's drag with
+      // a synthetic mouseup so its document listeners are removed without
+      // discarding the selection that was already made.
+      this.finishMouseSelection(event);
     }
   };
 
@@ -618,13 +619,27 @@ export class TerminalController {
 
   private readonly handleWindowBlur = (): void => {
     if (this.mouseSelectionPending) {
-      this.cancelMouseSelection();
+      this.finishMouseSelection();
     }
   };
 
-  private cancelMouseSelection(): void {
+  private finishMouseSelection(source?: MouseEvent): void {
     this.mouseSelectionPending = false;
-    this.terminal.clearSelection();
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 0,
+      buttons: 0,
+      clientX: source?.clientX ?? 0,
+      clientY: source?.clientY ?? 0,
+      screenX: source?.screenX ?? 0,
+      screenY: source?.screenY ?? 0,
+      altKey: source?.altKey ?? false,
+      ctrlKey: source?.ctrlKey ?? false,
+      metaKey: source?.metaKey ?? false,
+      shiftKey: source?.shiftKey ?? false
+    }));
   }
 
   private readonly handleWheel = (event: WheelEvent): void => {

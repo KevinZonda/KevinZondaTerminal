@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KTerm selection loss PoC</title>
+    <style>
+      body { margin: 24px; background: #0d1117; color: #e6edf3; font: 14px system-ui, sans-serif; }
+      p { max-width: 960px; line-height: 1.5; }
+      #fixture { width: 960px; height: 340px; border: 1px solid #30363d; }
+      #result { white-space: pre-wrap; font: 12px ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <h1>Selection loss PoC</h1>
+    <p>
+      此页面使用生产环境的 <code>TerminalController</code>。先拖出选区，再模拟 WebView
+      丢失 <code>mouseup</code>，随后发送一个 <code>buttons=0</code> 的
+      <code>mousemove</code>。修复后的兜底逻辑应当结束拖选，同时保留当前选区。
+    </p>
+    <div id="fixture"></div>
+    <pre id="result"></pre>
+    <script type="module" src="/src/selection-loss-poc.ts"></script>
+  </body>
+</html>
