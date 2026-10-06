@@ -56,6 +56,11 @@ Both clients default to `Auto` mode. Kimi tries an API key and then the Kimi Cod
 credential and falls back to `codex app-server` only for missing or rejected credentials. Network and malformed-response
 errors are surfaced instead of silently launching another process.
 
+The app-server launcher searches `PATH` first, then common Unix installation directories (including Homebrew's
+`/opt/homebrew/bin` and `/usr/local/bin`). This supports macOS desktop launches with a minimal `PATH`. The resolved
+directory is also added to the child's `PATH` for npm launchers that need `node`. For other installation locations,
+set `CodexUsageOptions.CodexExecutable` to the executable path. Launch errors include the path and OS error.
+
 Kimi usage authentication has two modes. **Passive** (the default) reads fresh CLI credentials on each usage request
 without refreshing or modifying them. After a 401, it retries once only when the CLI has saved a different, unexpired
 access token. Run `kimi login` if Passive credentials expire or are rejected. The legacy `AutoRenewToken` and

@@ -62,6 +62,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Kimi endpoint normalization", TestKimiEndpointAsync),
     ("Codex OAuth request and response", TestCodexOAuthAsync),
     ("Codex endpoint normalization", TestCodexEndpointAsync),
+    ("Codex resolves executables in PATH order and respects explicit paths", TestCodexExecutableResolutionAsync),
+    ("Codex launch errors include the executable and OS error", TestCodexLaunchErrorAsync),
     ("Cross-platform agent process tree detection", TestAgentProcessTreeAsync),
     ("Agent monitor service lifecycle", TestAgentMonitorServiceLifecycleAsync),
     ("Agent monitor detects CLI credential renewal before the usage interval", TestAgentMonitorCredentialPollingAsync),
@@ -90,6 +92,63 @@ foreach (var test in tests)
 }
 
 return failures == 0 ? 0 : 1;
+
+static Task TestCodexExecutableResolutionAsync()
+{
+    var root = Path.Combine(Path.GetTempPath(), "codex-resolution-tests", Guid.NewGuid().ToString("N"));
+    var first = Path.Combine(root, "path with spaces");
+    var fallback = Path.Combine(root, "fallback");
+    Directory.CreateDirectory(first);
+    Directory.CreateDirectory(fallback);
+    var command = OperatingSystem.IsWindows() ? "codex.cmd" : "codex";
+    var firstExecutable = Path.Combine(first, command);
+    var fallbackExecutable = Path.Combine(fallback, command);
+    try
+    {
+        File.WriteAllText(firstExecutable, string.Empty);
+        File.WriteAllText(fallbackExecutable, string.Empty);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(firstExecutable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(fallbackExecutable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        }
+
+        Equal(firstExecutable, CodexAppServerClient.ResolveExecutable("codex", [first, fallback]));
+        Equal(fallbackExecutable, CodexAppServerClient.ResolveExecutable("codex", [fallback]));
+        Equal("codex", CodexAppServerClient.ResolveExecutable("codex", []));
+        Equal(firstExecutable, CodexAppServerClient.ResolveExecutable(firstExecutable, [fallback]));
+        var relative = Path.Combine("custom", command);
+        Equal(relative, CodexAppServerClient.ResolveExecutable(relative, [fallback]));
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(firstExecutable, UnixFileMode.UserRead);
+            Equal(fallbackExecutable, CodexAppServerClient.ResolveExecutable("codex", [first, fallback]));
+        }
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+    return Task.CompletedTask;
+}
+
+static async Task TestCodexLaunchErrorAsync()
+{
+    var missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "codex");
+    try
+    {
+        await using var client = await CodexAppServerClient.StartAsync(
+            new CodexUsageOptions { CodexExecutable = missing }, CancellationToken.None);
+        throw new InvalidOperationException("A missing executable must fail to launch.");
+    }
+    catch (UsageException exception)
+    {
+        Equal(UsageErrorCode.ProcessError, exception.Code);
+        Contains(missing, exception.Message);
+        Equal(true, exception.InnerException is System.ComponentModel.Win32Exception);
+        Contains(exception.InnerException!.Message, exception.Message);
+    }
+}
 
 static Task TestAgentProcessTreeAsync()
 {

@@ -46,6 +46,12 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
             CreateNoWindow = true,
         };
         AddLaunchArguments(startInfo, executable, approvalPolicy);
+        if (!OperatingSystem.IsWindows() && Path.IsPathRooted(executable))
+        {
+            // npm launchers use /usr/bin/env node; GUI apps may lack the install directory in PATH.
+            startInfo.Environment["PATH"] = Path.GetDirectoryName(executable)
+                + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
+        }
         if (!string.IsNullOrWhiteSpace(options.CodexHome))
         {
             startInfo.Environment["CODEX_HOME"] = options.CodexHome;
@@ -62,7 +68,10 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
         catch (Exception exception) when (exception is not UsageException)
         {
             process.Dispose();
-            throw new UsageException(UsageErrorCode.ProcessError, "Failed to start codex app-server.", exception);
+            throw new UsageException(
+                UsageErrorCode.ProcessError,
+                $"Failed to start codex app-server ('{executable}'): {exception.Message}",
+                exception);
         }
 
         var client = new CodexAppServerClient(process, options.RpcRequestTimeout);
@@ -105,24 +114,51 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
 
     private static string ResolveExecutable(string configured)
     {
-        if (!OperatingSystem.IsWindows() || Path.IsPathRooted(configured))
+        var directories = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (!OperatingSystem.IsWindows())
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            directories = directories.Concat(new[]
+            {
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                Path.Combine(home, ".local", "bin"),
+                Path.Combine(home, ".npm-global", "bin"),
+                Path.Combine(home, ".cargo", "bin"),
+                "/usr/bin",
+                "/bin",
+            }).ToArray();
+        }
+
+        return ResolveExecutable(configured, directories);
+    }
+
+    internal static string ResolveExecutable(string configured, IEnumerable<string> directories)
+    {
+        // Explicit paths, including relative paths, must not be replaced by an installed command.
+        if (Path.IsPathRooted(configured)
+            || configured.Contains(Path.DirectorySeparatorChar)
+            || configured.Contains(Path.AltDirectorySeparatorChar))
         {
             return configured;
         }
 
         var extension = Path.GetExtension(configured);
-        var extensions = extension.Length > 0
+        var extensions = !OperatingSystem.IsWindows() || extension.Length > 0
             ? [string.Empty]
             : new[] { ".exe", ".com", ".cmd", ".bat", ".ps1" };
-        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var directory in directories)
         {
             foreach (var candidateExtension in extensions)
             {
                 var candidate = Path.Combine(directory.Trim('"'), configured + candidateExtension);
-                if (File.Exists(candidate))
+                if (File.Exists(candidate)
+                    && (OperatingSystem.IsWindows()
+                        || (File.GetUnixFileMode(candidate)
+                            & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0))
                 {
-                    return candidate;
+                    return Path.GetFullPath(candidate);
                 }
             }
         }
