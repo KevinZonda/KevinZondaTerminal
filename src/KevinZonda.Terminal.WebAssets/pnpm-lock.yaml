@@ -17,6 +17,9 @@ importers:
       '@xterm/addon-serialize':
         specifier: 0.15.0-beta.300
         version: 0.15.0-beta.300(@xterm/xterm@6.1.0-beta.302)
+      '@xterm/addon-unicode11':
+        specifier: 0.10.0-beta.299
+        version: 0.10.0-beta.299(@xterm/xterm@6.1.0-beta.302)
       '@xterm/addon-web-links':
         specifier: 0.13.0-beta.299
         version: 0.13.0-beta.299(@xterm/xterm@6.1.0-beta.302)
@@ -273,6 +276,11 @@ packages:
     resolution: {integrity: sha512-OCcnMMOCP+p5pIuXIro+u+wfNkSD8J2CZUqmyfTULxgs7jc+vyDL6UiaKmbs2q6MUcq4F9P5Oju3J8d4SEKOmQ==}
     peerDependencies:
       '@xterm/xterm': ^6.1.0-beta.303
+
+  '@xterm/addon-unicode11@0.10.0-beta.299':
+    resolution: {integrity: sha512-BShRMWsKqoHs9fm0L96zjC4Du5L19bvmdZffm5LPKLbVWUAZj7cjjbpXuFU9FsITIJlvjTqeNfq1vulv60zRDA==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.301
 
   '@xterm/addon-web-links@0.13.0-beta.299':
     resolution: {integrity: sha512-br9eKXtyRVcYelnmnjgZChlMTV+ut0gnwIVSCabxDw1zCe247R7bIgGeWOz9dYmrfA61JM4FdfjLWhdsKydXzg==}
@@ -586,6 +594,10 @@ snapshots:
       opentype.js: 2.0.0
 
   '@xterm/addon-serialize@0.15.0-beta.300(@xterm/xterm@6.1.0-beta.302)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.302
+
+  '@xterm/addon-unicode11@0.10.0-beta.299(@xterm/xterm@6.1.0-beta.302)':
     dependencies:
       '@xterm/xterm': 6.1.0-beta.302
 

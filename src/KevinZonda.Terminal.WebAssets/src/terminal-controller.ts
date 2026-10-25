@@ -1,6 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import type { LigaturesAddon } from '@xterm/addon-ligatures';
 import { SerializeAddon } from '@xterm/addon-serialize';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
@@ -105,7 +106,7 @@ export class TerminalController {
     this.element.append(this.host);
 
     this.terminal = new Terminal({
-      allowProposedApi: false,
+      allowProposedApi: true,
       convertEol: false,
       cursorBlink: cursor.blink,
       cursorStyle: cursor.shape,
@@ -126,6 +127,11 @@ export class TerminalController {
       // repaint instead of a second, diverging reflow.
       windowsPty: { backend: 'conpty', buildNumber: 19045 }
     });
+    // Select widths before any output or checkpoint is parsed. Unicode 6
+    // treats emoji such as U+1F311 and U+2693 as single-column characters.
+    // The unicode API requires allowProposedApi above.
+    this.terminal.loadAddon(new Unicode11Addon());
+    this.terminal.unicode.activeVersion = '11';
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.loadAddon(this.serializeAddon);
     this.terminal.loadAddon(new WebLinksAddon((_event, uri) => this.bridge.openExternal(uri)));
